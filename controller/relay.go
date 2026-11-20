@@ -71,6 +71,12 @@ func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewA
 }
 
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
+	if val, exists := c.Get("active_fusion_combo"); exists {
+		if combo, ok := val.(*model.Combo); ok {
+			RelayFusion(c, relayFormat, combo)
+			return
+		}
+	}
 
 	requestId := c.GetString(common.RequestIdKey)
 	//group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
@@ -207,6 +213,25 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
+			if val, exists := c.Get("active_combo"); exists {
+				if combo, ok := val.(*model.Combo); ok && combo.Strategy == model.ComboStrategyFallback {
+					if curIdxVal, hasIdx := c.Get("combo_fallback_index"); hasIdx {
+						curIdx := curIdxVal.(int)
+						if nextModel, nextIdx, hasNext := service.GetNextFallbackModel(combo, curIdx); hasNext {
+							logger.LogInfo(c, common.LogText("combo fallback: %s -> %s (reason: %s)", relayInfo.OriginModelName, nextModel, channelErr.Error()))
+							c.Set("combo_fallback_index", nextIdx)
+							relayInfo.OriginModelName = nextModel
+							retryParam.ModelName = nextModel
+							retryParam.SetRetry(0)
+							if relayInfo.Billing != nil {
+								relayInfo.Billing.Refund(c)
+							}
+							_ = relay.PrepareRequestBilling(c, relayInfo)
+							continue
+						}
+					}
+				}
+			}
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
 			break
@@ -258,6 +283,26 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError, relayInfo)
 
 		if decision.Action != "retry" {
+			if val, exists := c.Get("active_combo"); exists {
+				if combo, ok := val.(*model.Combo); ok && combo.Strategy == model.ComboStrategyFallback {
+					if curIdxVal, hasIdx := c.Get("combo_fallback_index"); hasIdx {
+						curIdx := curIdxVal.(int)
+						if nextModel, nextIdx, hasNext := service.GetNextFallbackModel(combo, curIdx); hasNext {
+							logger.LogInfo(c, common.LogText("combo fallback on failure: %s -> %s", relayInfo.OriginModelName, nextModel))
+							c.Set("combo_fallback_index", nextIdx)
+							relayInfo.OriginModelName = nextModel
+							retryParam.ModelName = nextModel
+							retryParam.SetRetry(0)
+							if relayInfo.Billing != nil {
+								relayInfo.Billing.Refund(c)
+							}
+							_ = relay.PrepareRequestBilling(c, relayInfo)
+							newAPIError = nil
+							continue
+						}
+					}
+				}
+			}
 			break
 		}
 	}

@@ -285,6 +285,18 @@ func ListModels(c *gin.Context, modelType int) {
 	for _, modelName := range userModelNames {
 		userOpenAiModels = append(userOpenAiModels, buildOpenAIModel(modelName, ownerByModel))
 	}
+	for _, combo := range service.ListEnabledCombosForGroup(groups.userGroup) {
+		if modelLimitEnable && !tokenModelLimit[combo.Name] {
+			continue
+		}
+		userOpenAiModels = append(userOpenAiModels, dto.OpenAIModels{
+			Id:                     combo.Name,
+			Object:                 "model",
+			Created:                int(combo.CreatedTime),
+			OwnedBy:                "combo",
+			SupportedEndpointTypes: []types.EndpointType{types.EndpointTypeOpenAI, types.EndpointTypeAnthropic},
+		})
+	}
 
 	switch modelType {
 	case constant.ChannelTypeAnthropic:
@@ -362,6 +374,27 @@ func EnabledListModels(c *gin.Context) {
 
 func RetrieveModel(c *gin.Context, modelType int) {
 	modelId := c.Param("model")
+	if combo, exists := service.GetComboByName(modelId); exists && combo.Status == model.ComboStatusEnabled {
+		comboModel := dto.OpenAIModels{
+			Id:                     combo.Name,
+			Object:                 "model",
+			Created:                int(combo.CreatedTime),
+			OwnedBy:                "combo",
+			SupportedEndpointTypes: []types.EndpointType{types.EndpointTypeOpenAI, types.EndpointTypeAnthropic},
+		}
+		switch modelType {
+		case constant.ChannelTypeAnthropic:
+			c.JSON(200, dto.AnthropicModel{
+				ID:          comboModel.Id,
+				CreatedAt:   time.Unix(int64(comboModel.Created), 0).UTC().Format(time.RFC3339),
+				DisplayName: comboModel.Id,
+				Type:        "model",
+			})
+		default:
+			c.JSON(200, comboModel)
+		}
+		return
+	}
 	if aiModel, ok := openAIModelsMap[modelId]; ok {
 		switch modelType {
 		case constant.ChannelTypeAnthropic:

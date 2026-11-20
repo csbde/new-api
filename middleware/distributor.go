@@ -97,6 +97,37 @@ func Distribute() func(c *gin.Context) {
 				}
 			}
 		}
+		if c.GetHeader("X-Internal-Combo") == "" {
+			if combo, isCombo := service.GetComboByName(modelRequest.Model); isCombo && combo.Status == model.ComboStatusEnabled {
+				c.Set("active_combo", combo)
+				c.Set("original_combo_model", modelRequest.Model)
+				switch combo.Strategy {
+				case model.ComboStrategyFusion:
+					c.Set("active_fusion_combo", combo)
+					shouldSelectChannel = false
+				case model.ComboStrategyRoundRobin:
+					targetModel := service.ResolveRoundRobin(combo)
+					if targetModel != "" {
+						modelRequest.Model = targetModel
+						rewriteRequestBodyModel(c, targetModel)
+					}
+				case model.ComboStrategySmartRouter:
+					prompt := extractPromptFromContext(c)
+					targetModel := service.ResolveSmartRouter(c.Request.Context(), c, combo, prompt)
+					if targetModel != "" {
+						modelRequest.Model = targetModel
+						rewriteRequestBodyModel(c, targetModel)
+					}
+				case model.ComboStrategyFallback:
+					if len(combo.Models) > 0 {
+						targetModel := combo.Models[0]
+						c.Set("combo_fallback_index", 0)
+						modelRequest.Model = targetModel
+						rewriteRequestBodyModel(c, targetModel)
+					}
+				}
+			}
+		}
 		if pinned || shouldSelectChannel {
 			usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 			var selectErr *service.ChannelSelectError
@@ -131,7 +162,9 @@ func Distribute() func(c *gin.Context) {
 			}
 		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
-		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
+		if _, isFusion := c.Get("active_fusion_combo"); !isFusion {
+			SetupContextForSelectedChannel(c, channel, modelRequest.Model)
+		}
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
 			service.RecordChannelAffinity(c, channel.Id)
@@ -778,4 +811,61 @@ func extractModelNameFromGeminiPath(path string) string {
 
 	// 返回模型名部分
 	return path[startIndex : startIndex+colonIndex]
+}
+
+func rewriteRequestBodyModel(c *gin.Context, targetModel string) {
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return
+	}
+	raw, err := storage.Bytes()
+	if err != nil || len(raw) == 0 {
+		return
+	}
+	var data map[string]any
+	if err := common.Unmarshal(raw, &data); err != nil {
+		return
+	}
+	data["model"] = targetModel
+	newBytes, err := common.Marshal(data)
+	if err != nil {
+		return
+	}
+	newStorage, err := common.CreateBodyStorage(newBytes)
+	if err != nil {
+		return
+	}
+	c.Set(common.KeyBodyStorage, newStorage)
+	c.Request.Body = io.NopCloser(newStorage)
+	c.Request.ContentLength = int64(len(newBytes))
+}
+
+func extractPromptFromContext(c *gin.Context) string {
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return ""
+	}
+	raw, err := storage.Bytes()
+	if err != nil || len(raw) == 0 {
+		return ""
+	}
+	var data map[string]any
+	if err := common.Unmarshal(raw, &data); err != nil {
+		return ""
+	}
+	if msgs, ok := data["messages"].([]any); ok && len(msgs) > 0 {
+		for i := len(msgs) - 1; i >= 0; i-- {
+			if mObj, ok := msgs[i].(map[string]any); ok {
+				if role, _ := mObj["role"].(string); role == "user" {
+					if cStr, ok := mObj["content"].(string); ok {
+						return cStr
+					}
+				}
+			}
+		}
+	}
+	if p, ok := data["prompt"].(string); ok {
+		return p
+	}
+	return ""
 }

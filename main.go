@@ -228,6 +228,7 @@ func main() {
 	InjectGoogleAnalytics()
 
 	// 设置路由
+	service.RouterProvider = func() *gin.Engine { return server }
 	router.SetRouter(server, router.WebAssets{
 		BuildFS:   buildFS,
 		IndexPage: indexPage,
@@ -369,6 +370,7 @@ func InitResources() error {
 		}
 	}
 	model.InitOptionMap()
+	_ = service.InitCombos()
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()

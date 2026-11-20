@@ -27,6 +27,7 @@ import {
   LayoutDashboard,
   ListTodo,
   MessageSquare,
+  Network,
   PlugZap,
   Radio,
   ServerCog,
@@ -137,6 +138,11 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
             title: t('Channels'),
             url: '/channels',
             icon: Radio,
+          },
+          {
+            title: t('Combos (Routing)'),
+            url: '/combos',
+            icon: Network,
           },
           {
             title: t('Models'),
