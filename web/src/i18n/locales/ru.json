@@ -7781,6 +7781,23 @@
     "Zhipu": "Zhipu",
     "Zhipu GLM": "Zhipu GLM",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "API Gateway": "API Gateway",
+    "API Gateway &lt;noreply@example.com&gt;": "API Gateway &lt;noreply@example.com&gt;",
+    "Connect to upstream API Gateway model services with support for multiple task plugins": "Подключение к службам моделей вышестоящего API Gateway с поддержкой нескольких плагинов задач",
+    "Custom API base URL. For official channels, the system has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.": "Пользовательский базовый URL API. Для официальных каналов система имеет встроенные адреса. Заполняйте только для сторонних прокси-сайтов или специальных эндпоинтов. Не добавляйте /v1 или завершающий слэш.",
+    "e.g. API Gateway Console": "например, Консоль API Gateway",
+    "Expand all": "Развернуть все",
+    "Format: AccessKey|SecretKey (or just ApiKey if upstream is API Gateway)": "Формат: AccessKey|SecretKey (или просто ApiKey, если вышестоящим является API Gateway)",
+    "If connecting to upstream relay projects, use OpenAI type instead unless you know what you are doing": "При подключении к вышестоящим проектам ретрансляции используйте тип OpenAI, если точно не уверены в своих действиях",
+    "Length": "Длина",
+    "Plugin metadata contains an unknown field \"{{field}}\". If this plugin was downloaded from the official marketplace, it may require a newer version of the system. Try updating the system and installing the plugin again.": "Метаданные плагина содержат неизвестное поле «{{field}}». Если плагин загружен из официального маркетплейса, ему может требоваться более новая версия системы. Обновите систему и установите плагин заново.",
+    "Select preset": "Выбрать пресет",
+    "The bound Product powers wallet top-ups: when a user enters any amount, checkout runs against this single Pancake product and overrides the price per session — no need to pre-create $1 / $5 / $10 SKUs.": "Привязанный продукт используется для пополнения кошелька: когда пользователь вводит любую сумму, оплата запускается через этот единственный продукт Pancake и переопределяет цену для каждой сессии — не нужно заранее создавать SKU на $1 / $5 / $10.",
+    "The bound Store is the parent container for every Pancake product created from this admin — both the wallet top-up product and any subscription-plan products. One store is enough; pin a different one only if you genuinely run separate Pancake catalogs.": "Привязанный магазин является родительским контейнером для всех продуктов Pancake, созданных из этой админки: как продукта пополнения кошелька, так и продуктов планов подписки. Одного магазина достаточно; выбирайте другой только если действительно ведете отдельные каталоги Pancake.",
+    "The flexible channel lets you configure upstream addresses and authentication per endpoint, choose native forwarding or supported protocol conversions, and configure model listing and balance queries independently": "Гибкий канал позволяет настраивать адреса и аутентификацию для каждого эндпоинта, выбирать прямую пересылку или поддерживаемые преобразования протоколов, а также независимо настраивать получение списка моделей и запрос баланса",
+    "This channel serves the models of every selected plugin. The upstream API Gateway must have the same plugins installed.": "Этот канал обслуживает модели каждого выбранного плагина. На вышестоящем шлюзе API должны быть установлены те же плагины.",
+    "Warning: Base URL should not end with /v1. The system will handle it automatically. This may cause request failures.": "Предупреждение: базовый URL не должен заканчиваться на /v1. Система обработает его автоматически. Это может привести к сбоям запросов.",
+    "Welcome to our API Gateway...": "Добро пожаловать в наш API Gateway..."
   }
 }

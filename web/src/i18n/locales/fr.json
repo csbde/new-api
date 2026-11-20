@@ -7781,6 +7781,23 @@
     "Zhipu": "Zhipu",
     "Zhipu GLM": "Zhipu GLM",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "API Gateway": "Passerelle API",
+    "API Gateway &lt;noreply@example.com&gt;": "Passerelle API &lt;noreply@example.com&gt;",
+    "Connect to upstream API Gateway model services with support for multiple task plugins": "Se connecter aux services de modèles de passerelle API en amont avec prise en charge de plusieurs plugins de tâches",
+    "Custom API base URL. For official channels, the system has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.": "URL de base de l'API personnalisée. Pour les canaux officiels, le système intègre des adresses par défaut. Ne renseignez ce champ que pour les sites proxy tiers ou les points de terminaison spécifiques. N'ajoutez pas /v1 ni de barre oblique finale.",
+    "e.g. API Gateway Console": "par ex. Console de passerelle API",
+    "Expand all": "Tout développer",
+    "Format: AccessKey|SecretKey (or just ApiKey if upstream is API Gateway)": "Format : AccessKey|SecretKey (ou simplement ApiKey si l'amont est API Gateway)",
+    "If connecting to upstream relay projects, use OpenAI type instead unless you know what you are doing": "En cas de connexion à des projets de relais en amont, utilisez plutôt le type OpenAI, sauf si vous savez ce que vous faites",
+    "Length": "Longueur",
+    "Plugin metadata contains an unknown field \"{{field}}\". If this plugin was downloaded from the official marketplace, it may require a newer version of the system. Try updating the system and installing the plugin again.": "Les métadonnées du plugin contiennent un champ inconnu « {{field}} ». Si ce plugin provient de la marketplace officielle, il peut nécessiter une version plus récente du système. Mettez à jour le système puis réinstallez le plugin.",
+    "Select preset": "Sélectionner un préréglage",
+    "The bound Product powers wallet top-ups: when a user enters any amount, checkout runs against this single Pancake product and overrides the price per session — no need to pre-create $1 / $5 / $10 SKUs.": "Le produit lié alimente les recharges de portefeuille : lorsqu'un utilisateur saisit un montant, le paiement s'effectue sur ce seul produit Pancake et remplace le prix par session — inutile de prédéfinir des références $1 / $5 / $10.",
+    "The bound Store is the parent container for every Pancake product created from this admin — both the wallet top-up product and any subscription-plan products. One store is enough; pin a different one only if you genuinely run separate Pancake catalogs.": "La boutique liée est le conteneur parent de chaque produit Pancake créé depuis cette interface d'administration — le produit de recharge de portefeuille et tous les plans d'abonnement. Une seule boutique suffit ; n'en définissez une autre que si vous gérez réellement des catalogues Pancake distincts.",
+    "The flexible channel lets you configure upstream addresses and authentication per endpoint, choose native forwarding or supported protocol conversions, and configure model listing and balance queries independently": "Le canal flexible vous permet de configurer les adresses en amont et l'authentification par point de terminaison, de choisir le transfert natif ou les conversions de protocole prises en charge, et de configurer la liste des modèles et les requêtes de solde indépendamment",
+    "This channel serves the models of every selected plugin. The upstream API Gateway must have the same plugins installed.": "Ce canal dessert les modèles de chaque plugin sélectionné. La passerelle API en amont doit avoir les mêmes plugins installés.",
+    "Warning: Base URL should not end with /v1. The system will handle it automatically. This may cause request failures.": "Avertissement : l'URL de base ne doit pas se terminer par /v1. Le système la traitera automatiquement. Cela pourrait entraîner des échecs de requête.",
+    "Welcome to our API Gateway...": "Bienvenue sur notre passerelle API..."
   }
 }

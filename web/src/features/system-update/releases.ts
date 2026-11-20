@@ -111,5 +111,6 @@ export function selectLatestRelease(payload: unknown): SystemRelease | null {
 }
 
 export function getSystemReleaseUrl(release: SystemRelease): string {
-  return `https://github.com/QuantumNous/new-api/releases/tag/${encodeURIComponent(release.tag_name)}`
+  if (release.html_url) return release.html_url
+  return '#'
 }

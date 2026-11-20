@@ -7781,6 +7781,23 @@
     "Zhipu": "Zhipu",
     "Zhipu GLM": "Zhipu GLM",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "API Gateway": "API Gateway",
+    "API Gateway &lt;noreply@example.com&gt;": "API Gateway &lt;noreply@example.com&gt;",
+    "Connect to upstream API Gateway model services with support for multiple task plugins": "Kết nối với các dịch vụ mô hình API Gateway ngược dòng với sự hỗ trợ cho nhiều plugin tác vụ",
+    "Custom API base URL. For official channels, the system has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.": "URL cơ sở API tùy chỉnh. Đối với các kênh chính thức, hệ thống đã tích hợp sẵn địa chỉ. Chỉ điền thông tin này cho các trang proxy của bên thứ ba hoặc điểm cuối đặc biệt. Không thêm /v1 hoặc dấu gạch chéo ở cuối.",
+    "e.g. API Gateway Console": "ví dụ: Bảng điều khiển API Gateway",
+    "Expand all": "Mở rộng tất cả",
+    "Format: AccessKey|SecretKey (or just ApiKey if upstream is API Gateway)": "Định dạng: AccessKey|SecretKey (hoặc chỉ ApiKey nếu ngược dòng là API Gateway)",
+    "If connecting to upstream relay projects, use OpenAI type instead unless you know what you are doing": "Nếu kết nối với các dự án chuyển tiếp ngược dòng, hãy sử dụng loại OpenAI trừ khi bạn biết rõ mình đang làm gì",
+    "Length": "Độ dài",
+    "Plugin metadata contains an unknown field \"{{field}}\". If this plugin was downloaded from the official marketplace, it may require a newer version of the system. Try updating the system and installing the plugin again.": "Siêu dữ liệu plugin chứa trường không xác định \"{{field}}\". Nếu plugin được tải từ chợ chính thức, có thể cần phiên bản hệ thống mới hơn. Hãy cập nhật hệ thống rồi cài đặt lại plugin.",
+    "Select preset": "Chọn cấu hình sẵn",
+    "The bound Product powers wallet top-ups: when a user enters any amount, checkout runs against this single Pancake product and overrides the price per session — no need to pre-create $1 / $5 / $10 SKUs.": "Sản phẩm đã liên kết dùng cho nạp ví: khi người dùng nhập bất kỳ số tiền nào, thanh toán chạy trên một sản phẩm Pancake duy nhất này và ghi đè giá theo từng phiên — không cần tạo trước SKU $1 / $5 / $10.",
+    "The bound Store is the parent container for every Pancake product created from this admin — both the wallet top-up product and any subscription-plan products. One store is enough; pin a different one only if you genuinely run separate Pancake catalogs.": "Cửa hàng đã liên kết là vùng chứa cha cho mọi sản phẩm Pancake được tạo từ trang quản trị này — bao gồm sản phẩm nạp ví và mọi sản phẩm gói đăng ký. Một cửa hàng là đủ; chỉ ghim cửa hàng khác nếu bạn thực sự vận hành các catalog Pancake riêng.",
+    "The flexible channel lets you configure upstream addresses and authentication per endpoint, choose native forwarding or supported protocol conversions, and configure model listing and balance queries independently": "Kênh linh hoạt cho phép bạn định cấu hình địa chỉ ngược dòng và xác thực theo từng điểm cuối, chọn chuyển tiếp gốc hoặc chuyển đổi giao thức được hỗ trợ, đồng thời định cấu hình danh sách mô hình và truy vấn số dư một cách độc lập",
+    "This channel serves the models of every selected plugin. The upstream API Gateway must have the same plugins installed.": "Kênh này cung cấp các mô hình của mỗi plugin được chọn. Cổng API ngược dòng phải được cài đặt cùng các plugin đó.",
+    "Warning: Base URL should not end with /v1. The system will handle it automatically. This may cause request failures.": "Cảnh báo: URL cơ sở không được kết thúc bằng /v1. Hệ thống sẽ tự động xử lý. Điều này có thể gây ra lỗi yêu cầu.",
+    "Welcome to our API Gateway...": "Chào mừng bạn đến với API Gateway của chúng tôi..."
   }
 }

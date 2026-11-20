@@ -1712,7 +1712,7 @@ func normalizeV1Meta(meta *Meta) error {
 			return fmt.Errorf("plugin meta channelTypes must not contain the task plugin channel type")
 		}
 		if channelType == constant.ChannelTypeNewAPI {
-			return fmt.Errorf("plugin meta channelTypes must not contain the New API channel type; bind the plugin through task_extend_plugin_keys instead")
+			return fmt.Errorf("plugin meta channelTypes must not contain the API Gateway channel type; bind the plugin through task_extend_plugin_keys instead")
 		}
 		if _, duplicate := seenChannelTypes[channelType]; duplicate {
 			return fmt.Errorf("plugin meta channelTypes must be unique")

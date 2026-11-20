@@ -7182,7 +7182,7 @@
     "Update selected fields": "更新所選欄位",
     "Update succeeded": "更新成功",
     "Update successful": "更新成功",
-    "Update the API key by providing necessary info.": "透過提供必要資訊更新 New API 金鑰。",
+    "Update the API key by providing necessary info.": "透過提供必要資訊更新 API 金鑰。",
     "Update the configuration for this custom OAuth provider.": "更新此自訂 OAuth 供應商的設定。",
     "Update the redemption code by providing necessary info.": "透過提供必要資訊更新兌換碼。",
     "Update the reusable bundle below.": "更新下面的可重用捆綁包。",
@@ -7781,6 +7781,23 @@
     "Zhipu": "智譜",
     "Zhipu GLM": "智譜GLM",
     "Zhipu V4": "智譜 V4",
-    "Zoom": "縮放"
+    "Zoom": "縮放",
+    "API Gateway": "API Gateway",
+    "API Gateway &lt;noreply@example.com&gt;": "API Gateway &lt;noreply@example.com&gt;",
+    "Connect to upstream API Gateway model services with support for multiple task plugins": "接入上游 API Gateway 模型服務，支援多個任務外掛",
+    "Custom API base URL. For official channels, the system has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.": "自訂 API 基礎 URL。對於官方渠道，系統具有內建地址。僅針對第三方代理站點或特殊端點填寫此項。請勿新增 /v1 或尾隨斜線。",
+    "e.g. API Gateway Console": "例如，API Gateway 控制台",
+    "Expand all": "全部展開",
+    "Format: AccessKey|SecretKey (or just ApiKey if upstream is API Gateway)": "格式：AccessKey|SecretKey（如果上游是 API Gateway，則只需 ApiKey）",
+    "If connecting to upstream relay projects, use OpenAI type instead unless you know what you are doing": "如果連接上游中繼專案，除非您知道自己在做什麼，否則請使用 OpenAI 類型",
+    "Length": "長度",
+    "Plugin metadata contains an unknown field \"{{field}}\". If this plugin was downloaded from the official marketplace, it may require a newer version of the system. Try updating the system and installing the plugin again.": "外掛中繼資料包含未知欄位「{{field}}」。如果外掛來自官方市集，可能需要較新版本的系統。請嘗試更新系統後重新安裝外掛。",
+    "Select preset": "選擇預設",
+    "The bound Product powers wallet top-ups: when a user enters any amount, checkout runs against this single Pancake product and overrides the price per session — no need to pre-create $1 / $5 / $10 SKUs.": "已連結產品用於錢包儲值：當用戶輸入任意金額時，結帳會基於這個單一 Pancake 產品發起，並按對話覆蓋價格，無需預先建立 $1 / $5 / $10 的 SKU。",
+    "The bound Store is the parent container for every Pancake product created from this admin — both the wallet top-up product and any subscription-plan products. One store is enough; pin a different one only if you genuinely run separate Pancake catalogs.": "已連結店鋪是從此管理端建立的所有 Pancake 產品的父容器，包括錢包儲值產品和訂閱套餐產品。一個店鋪通常足夠；只有在確實運營多個 Pancake 目錄時才需要連結不同店鋪。",
+    "The flexible channel lets you configure upstream addresses and authentication per endpoint, choose native forwarding or supported protocol conversions, and configure model listing and balance queries independently": "靈活接入渠道，可按介面設定上游位址與驗證方式，選擇原生轉發或專案支援的通訊協定轉換，並獨立設定模型清單和餘額查詢",
+    "This channel serves the models of every selected plugin. The upstream API Gateway must have the same plugins installed.": "此渠道將提供所選每個外掛的模型。上游 API Gateway 必須安裝相同的外掛。",
+    "Warning: Base URL should not end with /v1. The system will handle it automatically. This may cause request failures.": "警告：基礎 URL 不應以 /v1 結尾。系統將自動處理它。這可能會導致請求失敗。",
+    "Welcome to our API Gateway...": "歡迎使用我們的 API Gateway..."
   }
 }

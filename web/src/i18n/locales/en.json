@@ -7781,6 +7781,23 @@
     "Zhipu": "Zhipu",
     "Zhipu GLM": "Zhipu GLM",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "API Gateway": "API Gateway",
+    "API Gateway &lt;noreply@example.com&gt;": "API Gateway &lt;noreply@example.com&gt;",
+    "Connect to upstream API Gateway model services with support for multiple task plugins": "Connect to upstream API Gateway model services with support for multiple task plugins",
+    "Custom API base URL. For official channels, the system has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.": "Custom API base URL. For official channels, the system has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.",
+    "e.g. API Gateway Console": "e.g. API Gateway Console",
+    "Expand all": "Expand all",
+    "Format: AccessKey|SecretKey (or just ApiKey if upstream is API Gateway)": "Format: AccessKey|SecretKey (or just ApiKey if upstream is API Gateway)",
+    "If connecting to upstream relay projects, use OpenAI type instead unless you know what you are doing": "If connecting to upstream relay projects, use OpenAI type instead unless you know what you are doing",
+    "Length": "Length",
+    "Plugin metadata contains an unknown field \"{{field}}\". If this plugin was downloaded from the official marketplace, it may require a newer version of the system. Try updating the system and installing the plugin again.": "Plugin metadata contains an unknown field \"{{field}}\". If this plugin was downloaded from the official marketplace, it may require a newer version of the system. Try updating the system and installing the plugin again.",
+    "Select preset": "Select preset",
+    "The bound Product powers wallet top-ups: when a user enters any amount, checkout runs against this single Pancake product and overrides the price per session — no need to pre-create $1 / $5 / $10 SKUs.": "The bound Product powers wallet top-ups: when a user enters any amount, checkout runs against this single Pancake product and overrides the price per session — no need to pre-create $1 / $5 / $10 SKUs.",
+    "The bound Store is the parent container for every Pancake product created from this admin — both the wallet top-up product and any subscription-plan products. One store is enough; pin a different one only if you genuinely run separate Pancake catalogs.": "The bound Store is the parent container for every Pancake product created from this admin — both the wallet top-up product and any subscription-plan products. One store is enough; pin a different one only if you genuinely run separate Pancake catalogs.",
+    "The flexible channel lets you configure upstream addresses and authentication per endpoint, choose native forwarding or supported protocol conversions, and configure model listing and balance queries independently": "The flexible channel lets you configure upstream addresses and authentication per endpoint, choose native forwarding or supported protocol conversions, and configure model listing and balance queries independently",
+    "This channel serves the models of every selected plugin. The upstream API Gateway must have the same plugins installed.": "This channel serves the models of every selected plugin. The upstream API Gateway must have the same plugins installed.",
+    "Warning: Base URL should not end with /v1. The system will handle it automatically. This may cause request failures.": "Warning: Base URL should not end with /v1. The system will handle it automatically. This may cause request failures.",
+    "Welcome to our API Gateway...": "Welcome to our API Gateway..."
   }
 }
