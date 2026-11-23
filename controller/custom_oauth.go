@@ -159,9 +159,12 @@ func FetchCustomOAuthDiscovery(c *gin.Context) {
 
 	targetURL := wellKnownURL
 	if targetURL == "" {
-		targetURL = strings.TrimRight(issuerURL, "/") + "/.well-known/openid-configuration"
+		targetURL = issuerURL
 	}
 	targetURL = strings.TrimSpace(targetURL)
+	if targetURL != "" && !strings.Contains(targetURL, "/.well-known/") {
+		targetURL = strings.TrimRight(targetURL, "/") + "/.well-known/openid-configuration"
+	}
 
 	parsedURL, err := url.Parse(targetURL)
 	if err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {

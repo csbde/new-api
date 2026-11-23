@@ -17,8 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import axios from 'axios'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -27,6 +26,7 @@ import * as z from 'zod'
 
 import { CopyButton } from '@/components/copy-button'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import {
   Form,
   FormControl,
@@ -51,6 +51,7 @@ import {
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { discoverOIDCEndpoints } from './custom-oauth/api'
 import {
   buildOAuthCallbackUrl,
   resolveOAuthSiteUrl,
@@ -237,6 +238,15 @@ const normalizeFormValues = (values: OAuthFormValues): FlatOAuthDefaults => ({
   WeChatAccountQRCodeImageURL: values.WeChatAccountQRCodeImageURL,
 })
 
+const ENABLED_KEYS = new Set<keyof FlatOAuthDefaults>([
+  'GitHubOAuthEnabled',
+  'discord.enabled',
+  'oidc.enabled',
+  'TelegramOAuthEnabled',
+  'LinuxDOOAuthEnabled',
+  'WeChatAuthEnabled',
+])
+
 type OAuthSectionProps = {
   defaultValues: FlatOAuthDefaults
   serverAddress: string
@@ -287,14 +297,81 @@ export function OAuthSection(props: OAuthSectionProps) {
   const baselineSerializedRef = useRef<string>(
     JSON.stringify(props.defaultValues)
   )
+  const [isDiscovering, setIsDiscovering] = useState(false)
+  const lastDiscoveredUrlRef = useRef<string>('')
 
   useEffect(() => {
     const serialized = JSON.stringify(props.defaultValues)
     if (serialized === baselineSerializedRef.current) return
     baselineRef.current = props.defaultValues
     baselineSerializedRef.current = serialized
+    lastDiscoveredUrlRef.current = ''
     form.reset(buildFormDefaults(props.defaultValues))
   }, [props.defaultValues, form])
+
+  const handleOIDCDiscover = async () => {
+    const wellKnown = form.getValues('oidc.well_known').trim()
+    if (!wellKnown) {
+      toast.error(t('Please enter a Well-Known URL first'))
+      return
+    }
+
+    if (!wellKnown.startsWith('http://') && !wellKnown.startsWith('https://')) {
+      form.setError('oidc.well_known', {
+        type: 'validate',
+        message: t('Well-Known URL must start with http:// or https://'),
+      })
+      return
+    }
+
+    setIsDiscovering(true)
+    try {
+      const res = await discoverOIDCEndpoints(wellKnown)
+      if (res.success && res.data?.discovery) {
+        const disc = res.data.discovery
+        if (disc.authorization_endpoint) {
+          form.setValue(
+            'oidc.authorization_endpoint',
+            disc.authorization_endpoint,
+            { shouldDirty: true }
+          )
+        }
+        if (disc.token_endpoint) {
+          form.setValue('oidc.token_endpoint', disc.token_endpoint, {
+            shouldDirty: true,
+          })
+        }
+        if (disc.userinfo_endpoint) {
+          form.setValue('oidc.user_info_endpoint', disc.userinfo_endpoint, {
+            shouldDirty: true,
+          })
+        }
+        const resolvedWellKnown = res.data.well_known_url || wellKnown
+        form.setValue('oidc.well_known', resolvedWellKnown, {
+          shouldDirty: true,
+        })
+        lastDiscoveredUrlRef.current = resolvedWellKnown
+        form.clearErrors('oidc.well_known')
+        toast.success(t('OIDC configuration fetched successfully'))
+      } else {
+        handleServerError(
+          res,
+          t(
+            'Failed to fetch OIDC configuration. Please check the URL and network status'
+          )
+        )
+      }
+    } catch (err) {
+      handleServerError(
+        err,
+        t(
+          'Failed to fetch OIDC configuration. Please check the URL and network status'
+        )
+      )
+    } finally {
+      setIsDiscovering(false)
+    }
+  }
 
   const onSubmit = async (values: OAuthFormValues) => {
     let finalValues = values
@@ -305,7 +382,11 @@ export function OAuthSection(props: OAuthSectionProps) {
       values.oidc.enabled && !baselineRef.current['oidc.enabled']
 
     // Other providers and disabling OIDC must not depend on OIDC discovery.
-    if (wellKnown && (discoveryUrlChanged || enablingOIDC)) {
+    if (
+      wellKnown &&
+      (discoveryUrlChanged || enablingOIDC) &&
+      lastDiscoveredUrlRef.current !== wellKnown
+    ) {
       if (
         !wellKnown.startsWith('http://') &&
         !wellKnown.startsWith('https://')
@@ -319,35 +400,74 @@ export function OAuthSection(props: OAuthSectionProps) {
       }
 
       try {
-        const res = await axios.create().get(wellKnown)
-        const authEndpoint = res.data['authorization_endpoint'] || ''
-        const tokenEndpoint = res.data['token_endpoint'] || ''
-        const userInfoEndpoint = res.data['userinfo_endpoint'] || ''
+        const res = await discoverOIDCEndpoints(wellKnown)
+        if (res.success && res.data?.discovery) {
+          const disc = res.data.discovery
+          const authEndpoint =
+            disc.authorization_endpoint || values.oidc.authorization_endpoint
+          const tokenEndpoint =
+            disc.token_endpoint || values.oidc.token_endpoint
+          const userInfoEndpoint =
+            disc.userinfo_endpoint || values.oidc.user_info_endpoint
+          const resolvedWellKnown = res.data.well_known_url || wellKnown
 
-        finalValues = {
-          ...values,
-          oidc: {
-            ...values.oidc,
-            well_known: wellKnown,
-            authorization_endpoint: authEndpoint,
-            token_endpoint: tokenEndpoint,
-            user_info_endpoint: userInfoEndpoint,
-          },
+          finalValues = {
+            ...values,
+            oidc: {
+              ...values.oidc,
+              well_known: resolvedWellKnown,
+              authorization_endpoint: authEndpoint,
+              token_endpoint: tokenEndpoint,
+              user_info_endpoint: userInfoEndpoint,
+            },
+          }
+
+          form.setValue('oidc.well_known', resolvedWellKnown)
+          form.setValue('oidc.authorization_endpoint', authEndpoint)
+          form.setValue('oidc.token_endpoint', tokenEndpoint)
+          form.setValue('oidc.user_info_endpoint', userInfoEndpoint)
+          lastDiscoveredUrlRef.current = resolvedWellKnown
+
+          toast.success(t('OIDC configuration fetched successfully'))
+        } else {
+          const hasManualEndpoints =
+            Boolean(values.oidc.authorization_endpoint.trim()) &&
+            Boolean(values.oidc.token_endpoint.trim())
+          if (hasManualEndpoints) {
+            toast.warning(
+              t(
+                'Failed to fetch OIDC configuration. Please check the URL and network status'
+              )
+            )
+          } else {
+            handleServerError(
+              res,
+              t(
+                'Failed to fetch OIDC configuration. Please check the URL and network status'
+              )
+            )
+            return
+          }
         }
-
-        form.setValue('oidc.authorization_endpoint', authEndpoint)
-        form.setValue('oidc.token_endpoint', tokenEndpoint)
-        form.setValue('oidc.user_info_endpoint', userInfoEndpoint)
-
-        toast.success(t('OIDC configuration fetched successfully'))
       } catch (err) {
-        handleServerError(
-          err,
-          t(
-            'Failed to fetch OIDC configuration. Please check the URL and network status'
+        const hasManualEndpoints =
+          Boolean(values.oidc.authorization_endpoint.trim()) &&
+          Boolean(values.oidc.token_endpoint.trim())
+        if (hasManualEndpoints) {
+          toast.warning(
+            t(
+              'Failed to fetch OIDC configuration. Please check the URL and network status'
+            )
           )
-        )
-        return
+        } else {
+          handleServerError(
+            err,
+            t(
+              'Failed to fetch OIDC configuration. Please check the URL and network status'
+            )
+          )
+          return
+        }
       }
     }
 
@@ -361,7 +481,15 @@ export function OAuthSection(props: OAuthSectionProps) {
       return
     }
 
-    for (const key of changedKeys) {
+    const sortedKeys = [...changedKeys].sort((a, b) => {
+      const aIsEnable = ENABLED_KEYS.has(a) && normalized[a] === true
+      const bIsEnable = ENABLED_KEYS.has(b) && normalized[b] === true
+      if (aIsEnable && !bIsEnable) return 1
+      if (!aIsEnable && bIsEnable) return -1
+      return 0
+    })
+
+    for (const key of sortedKeys) {
       await updateOption.mutateAsync({
         key,
         value: normalized[key],
@@ -370,10 +498,12 @@ export function OAuthSection(props: OAuthSectionProps) {
 
     baselineRef.current = normalized
     baselineSerializedRef.current = JSON.stringify(normalized)
+    lastDiscoveredUrlRef.current = normalized['oidc.well_known'] ?? ''
     form.reset(buildFormDefaults(normalized))
   }
 
   const handleReset = () => {
+    lastDiscoveredUrlRef.current = ''
     form.reset(buildFormDefaults(baselineRef.current))
     toast.success(t('Form reset to saved values'))
   }
@@ -719,21 +849,34 @@ export function OAuthSection(props: OAuthSectionProps) {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>{t('Well-Known URL')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder={t(
-                            'https://provider.com/.well-known/openid-configuration'
-                          )}
-                          autoComplete='off'
-                          value={field.value ?? ''}
-                          onChange={(event) =>
-                            field.onChange(event.target.value)
-                          }
-                          name={field.name}
-                          onBlur={field.onBlur}
-                          ref={field.ref}
-                        />
-                      </FormControl>
+                      <div className='flex gap-2'>
+                        <FormControl>
+                          <Input
+                            placeholder={t(
+                              'https://provider.com/.well-known/openid-configuration'
+                            )}
+                            autoComplete='off'
+                            value={field.value ?? ''}
+                            onChange={(event) =>
+                              field.onChange(event.target.value)
+                            }
+                            name={field.name}
+                            onBlur={field.onBlur}
+                            ref={field.ref}
+                          />
+                        </FormControl>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          onClick={handleOIDCDiscover}
+                          disabled={isDiscovering}
+                        >
+                          <Search className='mr-1.5 h-3.5 w-3.5' />
+                          {isDiscovering
+                            ? t('Discovering...')
+                            : t('Auto-discover')}
+                        </Button>
+                      </div>
                       <FormDescription>
                         {t('Auto-discovers endpoints from the provider')}
                       </FormDescription>

@@ -25,7 +25,6 @@ import {
 } from '@tanstack/react-router'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import axios from 'axios'
 import { createInstance, type i18n } from 'i18next'
 import { useState, type ComponentProps } from 'react'
 import { I18nextProvider } from 'react-i18next'
@@ -121,13 +120,9 @@ describe('OAuth settings saves', () => {
   ])(
     'saves GitHub independently of unchanged OIDC settings (enabled: %s, URL: %s)',
     async (enabled, url) => {
-      const discoveryClient = axios.create()
-      vi.spyOn(discoveryClient, 'get').mockRejectedValue(
-        new Error('OIDC unavailable')
-      )
       const discovery = vi
-        .spyOn(axios, 'create')
-        .mockReturnValue(discoveryClient)
+        .spyOn(api, 'post')
+        .mockRejectedValue(new Error('OIDC unavailable'))
       const errorToast = vi.spyOn(toast, 'error')
       const user = userEvent.setup()
       await renderSettings({ 'oidc.enabled': enabled, 'oidc.well_known': url })
@@ -155,7 +150,7 @@ describe('OAuth settings saves', () => {
   )
 
   it('does not discover OIDC when saving an unchanged form', async () => {
-    const discovery = vi.spyOn(axios, 'create')
+    const discovery = vi.spyOn(api, 'post')
     const infoToast = vi.spyOn(toast, 'info')
     const user = userEvent.setup()
     await renderSettings({
@@ -226,22 +221,26 @@ describe('OAuth settings saves', () => {
   })
 
   it('keeps Save disabled during discovery and persists the discovered endpoints', async () => {
-    const client = axios.create()
     const response = {
       data: {
-        authorization_endpoint: 'https://provider.example.com/authorize',
-        token_endpoint: 'https://provider.example.com/token',
-        userinfo_endpoint: 'https://provider.example.com/userinfo',
+        success: true,
+        data: {
+          well_known_url: 'https://provider.example.com/discovery',
+          discovery: {
+            authorization_endpoint: 'https://provider.example.com/authorize',
+            token_endpoint: 'https://provider.example.com/token',
+            userinfo_endpoint: 'https://provider.example.com/userinfo',
+          },
+        },
       },
     }
     let finishDiscovery!: (value: typeof response) => void
-    const get = vi.spyOn(client, 'get').mockImplementation(
+    const post = vi.spyOn(api, 'post').mockImplementation(
       () =>
         new Promise((resolve) => {
           finishDiscovery = resolve
         })
     )
-    vi.spyOn(axios, 'create').mockReturnValue(client)
     const user = userEvent.setup()
     await renderSettings()
     await user.click(screen.getByRole('tab', { name: 'OIDC' }))
@@ -252,7 +251,10 @@ describe('OAuth settings saves', () => {
     await user.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() =>
-      expect(get).toHaveBeenCalledWith('https://provider.example.com/discovery')
+      expect(post).toHaveBeenCalledWith(
+        '/api/custom-oauth-provider/discovery',
+        { well_known_url: 'https://provider.example.com/discovery' }
+      )
     )
     expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled()
@@ -264,15 +266,15 @@ describe('OAuth settings saves', () => {
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(4))
     expect(api.put).toHaveBeenCalledWith('/api/option/', {
       key: 'oidc.authorization_endpoint',
-      value: response.data.authorization_endpoint,
+      value: response.data.data.discovery.authorization_endpoint,
     })
     expect(api.put).toHaveBeenCalledWith('/api/option/', {
       key: 'oidc.token_endpoint',
-      value: response.data.token_endpoint,
+      value: response.data.data.discovery.token_endpoint,
     })
     expect(api.put).toHaveBeenCalledWith('/api/option/', {
       key: 'oidc.user_info_endpoint',
-      value: response.data.userinfo_endpoint,
+      value: response.data.data.discovery.userinfo_endpoint,
     })
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled()
@@ -305,11 +307,9 @@ describe('OAuth settings saves', () => {
   )
 
   it('keeps edits available for retry when OIDC discovery fails', async () => {
-    const client = axios.create()
-    const get = vi
-      .spyOn(client, 'get')
+    const post = vi
+      .spyOn(api, 'post')
       .mockRejectedValue(new Error('OIDC unavailable'))
-    vi.spyOn(axios, 'create').mockReturnValue(client)
     const errorToast = vi.spyOn(toast, 'error')
     const user = userEvent.setup()
     await renderSettings()
@@ -327,7 +327,15 @@ describe('OAuth settings saves', () => {
     expect(screen.getByRole('textbox', { name: 'Well-Known URL' })).toHaveValue(
       'https://provider.example.com/discovery'
     )
-    get.mockResolvedValue({ data: {} })
+    post.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          well_known_url: 'https://provider.example.com/discovery',
+          discovery: {},
+        },
+      },
+    })
     await user.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith('/api/option/', {
@@ -335,5 +343,119 @@ describe('OAuth settings saves', () => {
         value: 'https://provider.example.com/discovery',
       })
     )
+  })
+
+  it('auto-discovers endpoints via button and populates form fields', async () => {
+    const post = vi.spyOn(api, 'post').mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          well_known_url:
+            'https://provider.example.com/.well-known/openid-configuration',
+          discovery: {
+            authorization_endpoint: 'https://provider.example.com/auth',
+            token_endpoint: 'https://provider.example.com/token',
+            userinfo_endpoint: 'https://provider.example.com/userinfo',
+          },
+        },
+      },
+    })
+    const user = userEvent.setup()
+    await renderSettings()
+    await user.click(screen.getByRole('tab', { name: 'OIDC' }))
+    await user.type(
+      screen.getByRole('textbox', { name: 'Well-Known URL' }),
+      'https://provider.example.com'
+    )
+    await user.click(screen.getByRole('button', { name: 'Auto-discover' }))
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('textbox', {
+          name: 'Authorization Endpoint (Optional)',
+        })
+      ).toHaveValue('https://provider.example.com/auth')
+    )
+    expect(
+      screen.getByRole('textbox', { name: 'Token Endpoint (Optional)' })
+    ).toHaveValue('https://provider.example.com/token')
+    expect(
+      screen.getByRole('textbox', { name: 'User Info Endpoint (Optional)' })
+    ).toHaveValue('https://provider.example.com/userinfo')
+
+    // Submitting after auto-discovery saves without calling api.post discovery a second time
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith('/api/option/', {
+        key: 'oidc.authorization_endpoint',
+        value: 'https://provider.example.com/auth',
+      })
+    )
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+
+  it('allows saving manual endpoints even when discovery fails', async () => {
+    vi.spyOn(api, 'post').mockRejectedValue(
+      new Error('Discovery network error')
+    )
+    const warningToast = vi.spyOn(toast, 'warning')
+    const user = userEvent.setup()
+    await renderSettings()
+    await user.click(screen.getByRole('tab', { name: 'OIDC' }))
+    await user.type(
+      screen.getByRole('textbox', { name: 'Well-Known URL' }),
+      'https://provider.example.com/discovery'
+    )
+    await user.type(
+      screen.getByRole('textbox', {
+        name: 'Authorization Endpoint (Optional)',
+      }),
+      'https://provider.example.com/custom/auth'
+    )
+    await user.type(
+      screen.getByRole('textbox', { name: 'Token Endpoint (Optional)' }),
+      'https://provider.example.com/custom/token'
+    )
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith('/api/option/', {
+        key: 'oidc.authorization_endpoint',
+        value: 'https://provider.example.com/custom/auth',
+      })
+    )
+    expect(api.put).toHaveBeenCalledWith('/api/option/', {
+      key: 'oidc.token_endpoint',
+      value: 'https://provider.example.com/custom/token',
+    })
+    expect(api.put).toHaveBeenCalledWith('/api/option/', {
+      key: 'oidc.well_known',
+      value: 'https://provider.example.com/discovery',
+    })
+    expect(warningToast).toHaveBeenCalledTimes(1)
+  })
+
+  it('saves client credentials before enabling provider', async () => {
+    const putCalls: string[] = []
+    vi.spyOn(api, 'put').mockImplementation((_url, data) => {
+      const payload = data as { key: string }
+      putCalls.push(payload.key)
+      return Promise.resolve({ data: { success: true } })
+    })
+    const user = userEvent.setup()
+    await renderSettings()
+    await user.click(screen.getByRole('tab', { name: 'OIDC' }))
+    await user.click(screen.getByRole('switch', { name: 'Enable OIDC' }))
+    await user.type(
+      screen.getByRole('textbox', { name: 'Client ID' }),
+      'my-client-id'
+    )
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }))
+
+    await waitFor(() => expect(putCalls.length).toBeGreaterThanOrEqual(2))
+    const clientIdIndex = putCalls.indexOf('oidc.client_id')
+    const enabledIndex = putCalls.indexOf('oidc.enabled')
+    expect(clientIdIndex).toBeGreaterThanOrEqual(0)
+    expect(enabledIndex).toBeGreaterThan(clientIdIndex)
   })
 })
