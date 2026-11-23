@@ -289,6 +289,14 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"PUT /api/models/":                      accessTokenScopeRule("model:write"),
 	"DELETE /api/models/:id":                accessTokenScopeRule("model:write"),
 
+	// router/combo-router.go: /api/combo
+	"GET /api/combo/":            accessTokenScopeRule("model:read"),
+	"GET /api/combo/:id":         accessTokenScopeRule("model:read"),
+	"POST /api/combo/":           accessTokenScopeRule("model:write"),
+	"PUT /api/combo/":            accessTokenScopeRule("model:write"),
+	"DELETE /api/combo/:id":      accessTokenScopeRule("model:write"),
+	"POST /api/combo/:id/status": accessTokenScopeRule("model:write"),
+
 	// router/api-router.go: /api/deployments
 	"GET /api/deployments/settings":                     accessTokenScopeRule("deployment:read"),
 	"POST /api/deployments/settings/test-connection":    accessTokenScopeRule("deployment:write"),

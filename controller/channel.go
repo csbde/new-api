@@ -856,12 +856,19 @@ func AddChannel(c *gin.Context) {
 	}
 
 	addChannelRequest.Channel.CreatedTime = common.GetTimestamp()
+	if addChannelRequest.Mode == "" {
+		addChannelRequest.Mode = "multi_to_single"
+	}
 	keys := make([]string, 0)
 	inputIndices := make([]int, 0)
 	switch addChannelRequest.Mode {
 	case "multi_to_single":
 		addChannelRequest.Channel.ChannelInfo.IsMultiKey = true
-		addChannelRequest.Channel.ChannelInfo.MultiKeyMode = addChannelRequest.MultiKeyMode
+		if addChannelRequest.MultiKeyMode != "" {
+			addChannelRequest.Channel.ChannelInfo.MultiKeyMode = addChannelRequest.MultiKeyMode
+		} else {
+			addChannelRequest.Channel.ChannelInfo.MultiKeyMode = constant.MultiKeyModeRandom
+		}
 		if addChannelRequest.Channel.Type == constant.ChannelTypeVertexAi && addChannelRequest.Channel.GetOtherSettings().VertexKeyType != dto.VertexKeyTypeAPIKey {
 			array, indices, err := getVertexArrayKeys(addChannelRequest.Channel.Key)
 			if err != nil {
@@ -913,7 +920,7 @@ func AddChannel(c *gin.Context) {
 		if key == "" {
 			continue
 		}
-		localChannel := addChannelRequest.Channel
+		localChannel := *addChannelRequest.Channel
 		localChannel.Key = key
 		if addChannelRequest.BatchAddSetKeyPrefix2Name && len(keys) > 1 {
 			keyPrefix := localChannel.Key
@@ -922,7 +929,7 @@ func AddChannel(c *gin.Context) {
 			}
 			localChannel.Name = fmt.Sprintf("%s %s", localChannel.Name, keyPrefix)
 		}
-		channels = append(channels, *localChannel)
+		channels = append(channels, localChannel)
 		if addChannelRequest.Mode == "multi_to_single" {
 			channelInputIndices = append(channelInputIndices, inputIndices)
 		} else {
@@ -1878,8 +1885,9 @@ func CopyChannel(c *gin.Context) {
 // MultiKeyManageRequest represents the request for multi-key management operations
 type MultiKeyManageRequest struct {
 	ChannelId int    `json:"channel_id"`
-	Action    string `json:"action"`              // "disable_key", "enable_key", "delete_key", "delete_disabled_keys", "get_key_status"
+	Action    string `json:"action"`              // "disable_key", "enable_key", "delete_key", "delete_disabled_keys", "get_key_status", "add_keys"
 	KeyIndex  *int   `json:"key_index,omitempty"` // for disable_key, enable_key, and delete_key actions
+	Keys      string `json:"keys,omitempty"`      // for add_keys action
 	Page      int    `json:"page,omitempty"`      // for get_key_status pagination
 	PageSize  int    `json:"page_size,omitempty"` // for get_key_status pagination
 	Status    *int   `json:"status,omitempty"`    // for get_key_status filtering: 1=enabled, 2=manual_disabled, 3=auto_disabled, nil=all
@@ -1928,8 +1936,15 @@ func ManageMultiKeys(c *gin.Context) {
 	}
 
 	if !channel.ChannelInfo.IsMultiKey {
-		common.ApiErrorT(c, "This channel is not in multi-key mode")
-		return
+		keys := channel.GetKeys()
+		channel.ChannelInfo.IsMultiKey = true
+		channel.ChannelInfo.MultiKeySize = len(keys)
+		if channel.ChannelInfo.MultiKeyMode == "" {
+			channel.ChannelInfo.MultiKeyMode = constant.MultiKeyModeRandom
+		}
+		_ = model.DB.Model(&model.Channel{}).Where("id = ?", channel.Id).Updates(map[string]any{
+			"channel_info": channel.ChannelInfo,
+		}).Error
 	}
 	if multiKeyActionRequiresSensitiveWrite(request.Action) &&
 		!authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite) {
@@ -2344,6 +2359,77 @@ func ManageMultiKeys(c *gin.Context) {
 		common.ApiSuccessT(c, "Deleted {{count}} auto-disabled keys", deletedCount, map[string]any{"count": deletedCount})
 		return
 
+	case "add_keys":
+		newKeyStr := strings.TrimSpace(request.Keys)
+		if newKeyStr == "" {
+			common.ApiErrorT(c, "No keys to add")
+			return
+		}
+		if err := checkPluginChannelKeys(c, channel, newKeyStr, channel.Key); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+
+		var addedCount int
+		shouldRestoreChannel := false
+		_, err = model.UpdateChannelLocked(channel.Id, func(stored *model.Channel) error {
+			existingKeys := stored.GetKeys()
+			existingKeySet := make(map[string]bool, len(existingKeys))
+			for _, k := range existingKeys {
+				existingKeySet[k] = true
+			}
+
+			var incoming []string
+			if stored.Type == constant.ChannelTypeVertexAi && stored.GetOtherSettings().VertexKeyType != dto.VertexKeyTypeAPIKey {
+				arr, _, err := getVertexArrayKeys(newKeyStr)
+				if err != nil {
+					return err
+				}
+				incoming = arr
+			} else {
+				for _, k := range strings.Split(newKeyStr, "\n") {
+					k = strings.TrimSpace(k)
+					if k != "" {
+						incoming = append(incoming, k)
+					}
+				}
+			}
+
+			var toAdd []string
+			for _, k := range incoming {
+				if !existingKeySet[k] {
+					existingKeySet[k] = true
+					toAdd = append(toAdd, k)
+				}
+			}
+
+			if len(toAdd) == 0 {
+				return common.NewMessage("All specified keys already exist")
+			}
+
+			addedCount = len(toAdd)
+			allKeys := append(existingKeys, toAdd...)
+			stored.Key = strings.Join(allKeys, "\n")
+			stored.ChannelInfo.IsMultiKey = true
+			stored.ChannelInfo.MultiKeySize = len(allKeys)
+			if stored.ChannelInfo.MultiKeyMode == "" {
+				stored.ChannelInfo.MultiKeyMode = constant.MultiKeyModeRandom
+			}
+			restoreMultiKeyChannelIfAvailable(stored)
+			shouldRestoreChannel = stored.Status == common.ChannelStatusEnabled
+			return nil
+		})
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		model.InitChannelCache()
+		if shouldRestoreChannel {
+			_ = model.UpdateAbilityStatus(channel.Id, true)
+		}
+		common.ApiSuccessT(c, "Added {{count}} keys", addedCount, map[string]any{"count": addedCount})
+		return
+
 	default:
 		common.ApiErrorT(c, "Unsupported operation")
 		return
@@ -2351,7 +2437,7 @@ func ManageMultiKeys(c *gin.Context) {
 }
 
 func multiKeyActionRequiresSensitiveWrite(action string) bool {
-	return action == "delete_key" || action == "delete_disabled_keys"
+	return action == "delete_key" || action == "delete_disabled_keys" || action == "add_keys"
 }
 
 // OllamaPullModel 拉取 Ollama 模型

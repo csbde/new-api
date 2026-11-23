@@ -649,7 +649,7 @@ func getTaskOriginModelName(c *gin.Context) string {
 	return ""
 }
 
-func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, modelName string) *types.NewAPIError {
+func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, modelName string, explicitKeyIndex ...int) *types.NewAPIError {
 	c.Set("original_model", modelName) // for retry
 	expectedPlugin := c.GetString("expected_task_plugin_key")
 	if channel == nil {
@@ -746,11 +746,24 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetContextKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 
-	key, index, newAPIError := channel.GetNextEnabledKey()
-	if newAPIError != nil {
-		return newAPIError
+	var key string
+	var index int
+	if len(explicitKeyIndex) > 0 && explicitKeyIndex[0] >= 0 {
+		keys := channel.GetKeys()
+		targetIdx := explicitKeyIndex[0]
+		if targetIdx >= len(keys) {
+			return types.NewError(errors.New("key index out of range"), types.ErrorCodeChannelNoAvailableKey)
+		}
+		key = keys[targetIdx]
+		index = targetIdx
+	} else {
+		var newAPIError *types.NewAPIError
+		key, index, newAPIError = channel.GetNextEnabledKey()
+		if newAPIError != nil {
+			return newAPIError
+		}
 	}
-	if channel.ChannelInfo.IsMultiKey {
+	if channel.ChannelInfo.IsMultiKey || (len(explicitKeyIndex) > 0 && explicitKeyIndex[0] >= 0) {
 		common.SetContextKey(c, constant.ContextKeyChannelIsMultiKey, true)
 		common.SetContextKey(c, constant.ContextKeyChannelMultiKeyIndex, index)
 	} else {

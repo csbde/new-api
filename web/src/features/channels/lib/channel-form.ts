@@ -372,7 +372,7 @@ export const channelFormSchema = z
     }
 
     if (data.type === 57) {
-      if (data.multi_key_mode && data.multi_key_mode !== 'single') {
+      if (data.multi_key_mode === 'batch') {
         addRequiredIssue(
           ctx,
           'multi_key_mode',
@@ -404,8 +404,7 @@ export const channelFormSchema = z
     if (
       data.type === 41 &&
       data.vertex_key_type === 'api_key' &&
-      data.multi_key_mode &&
-      data.multi_key_mode !== 'single'
+      data.multi_key_mode === 'batch'
     ) {
       addRequiredIssue(
         ctx,
@@ -463,7 +462,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   header_override: '',
   settings: '{}',
   other: '',
-  multi_key_mode: 'single',
+  multi_key_mode: 'multi_to_single',
   multi_key_type: 'random',
   batch_add_set_key_prefix_2_name: false,
   key_mode: 'append',
@@ -650,7 +649,7 @@ export function transformChannelToFormDefaults(
     header_override: channel.header_override || '',
     settings: channel.settings || '{}',
     other: channel.other || '',
-    multi_key_mode: 'single',
+    multi_key_mode: 'multi_to_single',
     multi_key_type: channel.channel_info.multi_key_mode || 'random',
     batch_add_set_key_prefix_2_name: false,
     key_mode: 'append', // Default to append mode for editing multi-key channels
@@ -915,7 +914,7 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
   batch_add_set_key_prefix_2_name?: boolean
   channel: Partial<Channel>
 } {
-  const mode = formData.multi_key_mode || 'single'
+  const mode = formData.multi_key_mode || 'multi_to_single'
 
   const channel: Partial<Channel> = {
     name: formData.name,

@@ -329,7 +329,12 @@ export async function batchSetChannelTag(
  */
 export async function testChannel(
   id: number,
-  params?: { model?: string; endpoint_type?: string; stream?: boolean }
+  params?: {
+    model?: string
+    endpoint_type?: string
+    stream?: boolean
+    key_index?: number
+  }
 ): Promise<ChannelTestResponse> {
   const res = await api.get(
     `/api/channel/test/${id}`,
@@ -649,6 +654,20 @@ export async function deleteDisabledMultiKeys(
   return manageMultiKeys({
     channel_id: channelId,
     action: 'delete_disabled_keys',
+  }) as Promise<{ success: boolean; message?: string; data?: number }>
+}
+
+/**
+ * Add keys to a channel anytime
+ */
+export async function addMultiKeys(
+  channelId: number,
+  keys: string
+): Promise<{ success: boolean; message?: string; data?: number }> {
+  return manageMultiKeys({
+    channel_id: channelId,
+    action: 'add_keys',
+    keys,
   }) as Promise<{ success: boolean; message?: string; data?: number }>
 }
 

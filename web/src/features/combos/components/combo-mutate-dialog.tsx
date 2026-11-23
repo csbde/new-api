@@ -1,10 +1,12 @@
-import { Plus, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
 import {
   Dialog,
   DialogContent,
@@ -24,6 +26,8 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { getEnabledModels } from '@/features/channels/api'
+import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { createCombo, updateCombo } from '../api'
 import type { Combo, ComboSmartMode, ComboStrategy } from '../types'
@@ -48,7 +52,7 @@ export function ComboMutateDialog({
   const [description, setDescription] = useState('')
   const [strategy, setStrategy] = useState<ComboStrategy>('fallback')
   const [models, setModels] = useState<string[]>([])
-  const [modelInput, setModelInput] = useState('')
+  const [customModel, setCustomModel] = useState('')
   const [group, setGroup] = useState('')
   const [status, setStatus] = useState<number>(1)
 
@@ -64,6 +68,46 @@ export function ComboMutateDialog({
   const [temperature, setTemperature] = useState<number>(0.7)
 
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Fetch available enabled models across channels
+  const { data: enabledModelsData } = useQuery({
+    queryKey: ['enabled-models'],
+    queryFn: async () => requireServerSuccess(await getEnabledModels()),
+    enabled: open,
+  })
+
+  const availableModels = useMemo(() => {
+    return enabledModelsData?.data || []
+  }, [enabledModelsData])
+
+  const availableModelOptions = useMemo(() => {
+    return availableModels
+      .filter((m) => !models.includes(m))
+      .map((m) => ({
+        value: m,
+        label: m,
+      }))
+  }, [availableModels, models])
+
+  const decisionModelOptions = useMemo(() => {
+    return availableModels.map((m) => ({
+      value: m,
+      label: m,
+    }))
+  }, [availableModels])
+
+  const judgeModelOptions = useMemo(() => {
+    const list: Array<{ value: string; label: string }> = []
+    for (const m of models) {
+      list.push({ value: m, label: `${m} (${t('Primary Model')})` })
+    }
+    for (const m of availableModels) {
+      if (!models.includes(m)) {
+        list.push({ value: m, label: m })
+      }
+    }
+    return list
+  }, [models, availableModels, t])
 
   useEffect(() => {
     if (open) {
@@ -100,23 +144,53 @@ export function ComboMutateDialog({
         setSynthesisPrompt('')
         setTemperature(0.7)
       }
-      setModelInput('')
+      setCustomModel('')
     }
   }, [open, combo])
 
-  const handleAddModel = () => {
-    const trimmed = modelInput.trim()
-    if (!trimmed) return
-    if (models.includes(trimmed)) {
+  const handleAddModel = (inputName: string) => {
+    const raw = inputName.trim()
+    if (!raw) return
+
+    const names = raw
+      .split(/[,，\n]/)
+      .map((n) => n.trim())
+      .filter(Boolean)
+    if (names.length === 0) return
+
+    const newToAdd: string[] = []
+    let duplicateCount = 0
+
+    for (const modelName of names) {
+      if (models.includes(modelName) || newToAdd.includes(modelName)) {
+        duplicateCount++
+      } else {
+        newToAdd.push(modelName)
+      }
+    }
+
+    if (duplicateCount > 0 && newToAdd.length === 0) {
       toast.error(t('Model already in candidate list'))
       return
     }
-    setModels([...models, trimmed])
-    setModelInput('')
+
+    setModels((prev) => [...prev, ...newToAdd])
+  }
+
+  const handleMoveModel = (index: number, delta: number) => {
+    const targetIndex = index + delta
+    if (targetIndex < 0 || targetIndex >= models.length) return
+    setModels((prev) => {
+      const next = [...prev]
+      const item = next[index]
+      next[index] = next[targetIndex]
+      next[targetIndex] = item
+      return next
+    })
   }
 
   const handleRemoveModel = (indexToRemove: number) => {
-    setModels(models.filter((_, idx) => idx !== indexToRemove))
+    setModels((prev) => prev.filter((_, idx) => idx !== indexToRemove))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -173,7 +247,7 @@ export function ComboMutateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-[600px] max-h-[90vh] overflow-y-auto'>
+      <DialogContent className='sm:max-w-[640px] max-h-[90vh] overflow-y-auto'>
         <DialogHeader>
           <DialogTitle>
             {isEdit ? t('Edit Combo') : t('Create Combo')}
@@ -204,10 +278,14 @@ export function ComboMutateDialog({
                 value={strategy}
                 onValueChange={(val) => setStrategy(val as ComboStrategy)}
               >
-                <SelectTrigger id='combo-strategy'>
+                <SelectTrigger id='combo-strategy' className='w-full'>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent
+                  className='w-auto min-w-(--anchor-width) max-w-[calc(100vw-2rem)]'
+                  align='start'
+                  alignItemWithTrigger={false}
+                >
                   <SelectItem value='fallback'>
                     {t('Fallback (Sequential Failover)')}
                   </SelectItem>
@@ -235,40 +313,116 @@ export function ComboMutateDialog({
             />
           </div>
 
-          <div className='space-y-2'>
-            <Label>{t('Candidate Models (In Priority / Order)')}</Label>
-            <div className='flex gap-2'>
-              <Input
-                value={modelInput}
-                onChange={(e) => setModelInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    handleAddModel()
+          <div className='space-y-2.5'>
+            <div className='flex items-center justify-between'>
+              <Label>{t('Candidate Models (In Priority / Order)')}</Label>
+              {models.length > 0 && (
+                <span className='text-xs font-mono text-muted-foreground'>
+                  {models.length} {t('Models')}
+                </span>
+              )}
+            </div>
+
+            <div className='grid grid-cols-1 sm:grid-cols-2 gap-2'>
+              <Combobox
+                options={availableModelOptions}
+                onValueChange={(val) => {
+                  if (val) {
+                    handleAddModel(val)
                   }
                 }}
-                placeholder={t('Type model name (e.g. claude-3-7-sonnet) and press Enter')}
+                className='w-full'
+                placeholder={t('Add from available models...')}
+                emptyText={t('No matching models')}
               />
-              <Button type='button' variant='secondary' onClick={handleAddModel}>
-                <Plus className='h-4 w-4 mr-1' />
-                {t('Add')}
-              </Button>
+              <div className='flex gap-1.5'>
+                <Input
+                  value={customModel}
+                  onChange={(e) => setCustomModel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleAddModel(customModel)
+                      setCustomModel('')
+                    }
+                  }}
+                  placeholder={t('Custom model (comma-separated)')}
+                  className='flex-1'
+                />
+                <Button
+                  type='button'
+                  variant='secondary'
+                  onClick={() => {
+                    handleAddModel(customModel)
+                    setCustomModel('')
+                  }}
+                  disabled={!customModel.trim()}
+                >
+                  <Plus className='h-4 w-4 mr-1' />
+                  {t('Add')}
+                </Button>
+              </div>
             </div>
 
             {models.length > 0 ? (
-              <div className='flex flex-wrap gap-1.5 p-2 rounded-md border bg-muted/40 min-h-[42px] items-center'>
+              <div className='space-y-1.5 max-h-[220px] overflow-y-auto p-1.5 rounded-md border bg-muted/20'>
                 {models.map((m, idx) => (
-                  <Badge key={m} variant='secondary' className='gap-1 pr-1 py-1'>
-                    <span className='text-xs opacity-60 mr-0.5'>{idx + 1}.</span>
-                    <span>{m}</span>
-                    <button
-                      type='button'
-                      onClick={() => handleRemoveModel(idx)}
-                      className='rounded-full hover:bg-muted p-0.5 ml-1'
-                    >
-                      <X className='h-3 w-3' />
-                    </button>
-                  </Badge>
+                  <div
+                    key={m}
+                    className='flex items-center justify-between px-2.5 py-1.5 bg-background border rounded-md text-sm gap-2'
+                  >
+                    <div className='flex items-center gap-2 min-w-0'>
+                      <Badge
+                        variant={idx === 0 ? 'default' : 'secondary'}
+                        className='h-5 px-1.5 text-xs font-mono shrink-0'
+                      >
+                        #{idx + 1}
+                      </Badge>
+                      <span className='truncate font-medium' title={m}>
+                        {m}
+                      </span>
+                      {idx === 0 && (
+                        <span className='text-xs text-muted-foreground shrink-0'>
+                          ({t('Primary Model')})
+                        </span>
+                      )}
+                    </div>
+                    <div className='flex items-center gap-0.5 shrink-0'>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='icon-sm'
+                        disabled={idx === 0}
+                        onClick={() => handleMoveModel(idx, -1)}
+                        title={t('Move {{name}} up', { name: m })}
+                        aria-label={t('Move {{name}} up', { name: m })}
+                      >
+                        <ArrowUp className='size-3.5' />
+                      </Button>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='icon-sm'
+                        disabled={idx === models.length - 1}
+                        onClick={() => handleMoveModel(idx, 1)}
+                        title={t('Move {{name}} down', { name: m })}
+                        aria-label={t('Move {{name}} down', { name: m })}
+                      >
+                        <ArrowDown className='size-3.5' />
+                      </Button>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='icon-sm'
+                        className='text-muted-foreground hover:text-destructive'
+                        onClick={() => handleRemoveModel(idx)}
+                        title={t('Delete {{name}}', { name: m })}
+                        aria-label={t('Delete {{name}}', { name: m })}
+                      >
+                        <X className='size-3.5' />
+                      </Button>
+                    </div>
+                  </div>
                 ))}
               </div>
             ) : (
@@ -293,11 +447,13 @@ export function ComboMutateDialog({
                   <Label htmlFor='smart-decision-model'>
                     {t('Decision Model')}
                   </Label>
-                  <Input
+                  <Combobox
                     id='smart-decision-model'
+                    options={decisionModelOptions}
                     value={decisionModel}
-                    onChange={(e) => setDecisionModel(e.target.value)}
+                    onValueChange={(val) => setDecisionModel(val ?? '')}
                     placeholder='e.g. gpt-4o-mini'
+                    allowCustomValue
                   />
                   <p className='text-xs text-muted-foreground'>
                     {t('Fast model to evaluate prompt complexity')}
@@ -310,10 +466,14 @@ export function ComboMutateDialog({
                     value={smartMode}
                     onValueChange={(val) => setSmartMode(val as ComboSmartMode)}
                   >
-                    <SelectTrigger id='smart-mode'>
+                    <SelectTrigger id='smart-mode' className='w-full'>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent
+                      className='w-auto min-w-(--anchor-width) max-w-[calc(100vw-2rem)]'
+                      align='start'
+                      alignItemWithTrigger={false}
+                    >
                       <SelectItem value='smart_switch'>
                         {t('Smart Switch (Adaptive Hysteresis)')}
                       </SelectItem>
@@ -341,7 +501,7 @@ export function ComboMutateDialog({
                     max='0.95'
                     value={hysteresisThreshold}
                     onChange={(e) =>
-                      setHysteresisThreshold(parseFloat(e.target.value) || 0.2)
+                      setHysteresisThreshold(Number.parseFloat(e.target.value) || 0.2)
                     }
                   />
                   <p className='text-xs text-muted-foreground'>
@@ -379,11 +539,13 @@ export function ComboMutateDialog({
               <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
                 <div className='space-y-1.5'>
                   <Label htmlFor='fusion-judge-model'>{t('Judge Model')}</Label>
-                  <Input
+                  <Combobox
                     id='fusion-judge-model'
+                    options={judgeModelOptions}
                     value={judgeModel}
-                    onChange={(e) => setJudgeModel(e.target.value)}
+                    onValueChange={(val) => setJudgeModel(val ?? '')}
                     placeholder={t('Leave blank to use primary candidate')}
+                    allowCustomValue
                   />
                 </div>
 
@@ -399,7 +561,7 @@ export function ComboMutateDialog({
                     max='2'
                     value={temperature}
                     onChange={(e) =>
-                      setTemperature(parseFloat(e.target.value) || 0.7)
+                      setTemperature(Number.parseFloat(e.target.value) || 0.7)
                     }
                   />
                 </div>

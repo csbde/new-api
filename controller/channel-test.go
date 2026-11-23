@@ -99,7 +99,7 @@ func resolveChannelTestUserID(c *gin.Context) (int, error) {
 	return rootUser.Id, nil
 }
 
-func testChannel(ctx context.Context, channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool) testResult {
+func testChannel(ctx context.Context, channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool, explicitKeyIndex ...int) testResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -211,7 +211,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	group, _ := model.GetUserGroup(testUserID, false)
 	c.Set("group", group)
 
-	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
+	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel, explicitKeyIndex...)
 	if newAPIError != nil {
 		return testResult{
 			context:     c,
@@ -918,7 +918,18 @@ func TestChannel(c *gin.Context) {
 	if c.Request != nil {
 		requestCtx = c.Request.Context()
 	}
-	result := testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream)
+	keyIndex := -1
+	if keyIndexStr := c.Query("key_index"); keyIndexStr != "" {
+		if parsed, err := strconv.Atoi(keyIndexStr); err == nil && parsed >= 0 {
+			keyIndex = parsed
+		}
+	}
+	var result testResult
+	if keyIndex >= 0 {
+		result = testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream, keyIndex)
+	} else {
+		result = testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream)
+	}
 	if result.localErr != nil {
 		resp := gin.H{
 			"success": false,

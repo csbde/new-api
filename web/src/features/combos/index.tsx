@@ -125,12 +125,12 @@ export function Combos() {
   const renderSettingsSummary = (combo: Combo) => {
     if (combo.strategy === 'smart_router') {
       const mode = combo.settings?.smart_mode || 'smart_switch'
-      const modeLabel =
-        mode === 'strict_lock'
-          ? t('Strict Lock (+0ms)')
-          : mode === 'smart_switch'
-            ? t('Smart Switch')
-            : t('Per-Turn')
+      let modeLabel = t('Per-Turn')
+      if (mode === 'strict_lock') {
+        modeLabel = t('Strict Lock (+0ms)')
+      } else if (mode === 'smart_switch') {
+        modeLabel = t('Smart Switch')
+      }
       return (
         <div className='text-xs space-y-0.5 text-muted-foreground'>
           <div>
@@ -214,7 +214,7 @@ export function Combos() {
                 <SelectTrigger className='w-[180px]'>
                   <SelectValue placeholder={t('Filter Strategy')} />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className='w-auto min-w-(--anchor-width)' align='start' alignItemWithTrigger={false}>
                   <SelectItem value='all'>{t('All Strategies')}</SelectItem>
                   <SelectItem value='fallback'>{t('Fallback')}</SelectItem>
                   <SelectItem value='round_robin'>{t('Round Robin')}</SelectItem>
@@ -242,19 +242,21 @@ export function Combos() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading ? (
+                {isLoading && (
                   <TableRow>
                     <TableCell colSpan={6} className='text-center py-8 text-muted-foreground'>
                       {t('Loading combos...')}
                     </TableCell>
                   </TableRow>
-                ) : combos.length === 0 ? (
+                )}
+                {!isLoading && combos.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className='text-center py-12 text-muted-foreground'>
                       {t('No combos found. Click "Create Combo" to add your first routing combo.')}
                     </TableCell>
                   </TableRow>
-                ) : (
+                )}
+                {!isLoading && combos.length > 0 &&
                   combos.map((combo) => (
                     <TableRow key={combo.id}>
                       <TableCell className='font-medium'>
@@ -320,8 +322,7 @@ export function Combos() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
+                  ))}
               </TableBody>
             </Table>
           </div>

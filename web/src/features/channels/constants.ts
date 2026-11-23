@@ -307,12 +307,11 @@ export const MULTI_KEY_MODES = [
 ] as const
 
 export const ADD_MODE_OPTIONS = [
-  { value: 'single', label: 'Single Key' },
-  { value: 'batch', label: 'Batch Add (one key per line)' },
   {
     value: 'multi_to_single',
     label: 'Multi-Key Mode (multiple keys, one channel)',
   },
+  { value: 'batch', label: 'Batch Add (one key per line)' },
 ] as const
 
 // ============================================================================

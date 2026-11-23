@@ -456,7 +456,7 @@ test('selecting a plugin opens a prefilled channel and creates its explicit bind
   const [url, payload] = post.mock.calls[0]
   expect(url).toBe('/api/channel')
   expect(payload).toMatchObject({
-    mode: 'single',
+    mode: 'multi_to_single',
     channel: {
       name: 'Video A',
       type: 61,
@@ -3268,10 +3268,15 @@ test('a login plugin saves without a key, then logs in on the new channel', asyn
     )
   ).toBeVisible()
   const addMode = screen.getByRole('combobox', { name: 'Add Mode' })
-  expect(addMode).toHaveTextContent('Single Key')
+  expect(addMode).toHaveTextContent(
+    'Multi-Key Mode (multiple keys, one channel)'
+  )
   await user.click(addMode)
   expect(
     screen.queryByRole('option', { name: 'Batch Add (one key per line)' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('option', { name: 'Single Key' })
   ).not.toBeInTheDocument()
   expect(
     screen.getByRole('option', {
@@ -3288,7 +3293,7 @@ test('a login plugin saves without a key, then logs in on the new channel', asyn
     1,
     '/api/channel',
     expect.objectContaining({
-      mode: 'single',
+      mode: 'multi_to_single',
       channel: expect.objectContaining({ type: 61, key: null }),
     }),
     expect.anything()

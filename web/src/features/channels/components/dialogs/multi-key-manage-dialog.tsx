@@ -17,12 +17,25 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQueryClient } from '@tanstack/react-query'
-import { Loader2, RefreshCw, Trash2, Power, PowerOff } from 'lucide-react'
+import {
+  Loader2,
+  RefreshCw,
+  Trash2,
+  Power,
+  PowerOff,
+  Plus,
+  Key,
+  Play,
+  CheckCircle2,
+  AlertCircle,
+  X,
+} from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { CopyButton } from '@/components/copy-button'
 import { StaticDataTable } from '@/components/data-table'
 import { Dialog } from '@/components/dialog'
 import { StatusBadge } from '@/components/status-badge'
@@ -36,6 +49,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { toIntlLocale } from '@/i18n/languages'
 import {
   ADMIN_PERMISSION_ACTIONS,
@@ -58,6 +79,8 @@ import {
   enableAllMultiKeys,
   disableAllMultiKeys,
   deleteDisabledMultiKeys,
+  addMultiKeys,
+  testChannel,
 } from '../../api'
 import {
   CHANNEL_TYPE_TASK_PLUGIN,
@@ -113,14 +136,34 @@ export function MultiKeyManageDialog({
   const [manualDisabledCount, setManualDisabledCount] = useState(0)
   const [autoDisabledCount, setAutoDisabledCount] = useState(0)
 
+  // Add Keys state
+  const [showAddKeys, setShowAddKeys] = useState(false)
+  const [newKeysText, setNewKeysText] = useState('')
+  const [isAddingKeys, setIsAddingKeys] = useState(false)
+
+  // Testing & Toggling state per key
+  const [testingKeyIndices, setTestingKeyIndices] = useState<
+    Record<number, boolean>
+  >({})
+  const [keyTestResults, setKeyTestResults] = useState<
+    Record<
+      number,
+      {
+        success: boolean
+        time?: number
+        message?: string
+      }
+    >
+  >({})
+  const [togglingKeyIndices, setTogglingKeyIndices] = useState<
+    Record<number, boolean>
+  >({})
+
   // UI state
   const [statusFilter, setStatusFilter] = useState<number | null>(null)
   const [confirmAction, setConfirmAction] =
     useState<MultiKeyConfirmAction | null>(null)
   const [isPerformingAction, setIsPerformingAction] = useState(false)
-  // A confirmed action reloads the table, which can remove the button that
-  // asked for it. Focus then comes back into this dialog rather than to
-  // whatever opened the dialog, so the next Escape closes only this dialog.
   const confirmOpenerRef = useRef<HTMLElement | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
 
@@ -142,6 +185,9 @@ export function MultiKeyManageDialog({
     if (open && currentRow) {
       setCurrentPage(1)
       setStatusFilter(null)
+      setShowAddKeys(false)
+      setNewKeysText('')
+      setKeyTestResults({})
       loadKeyStatus(1, pageSize, null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -194,6 +240,126 @@ export function MultiKeyManageDialog({
     loadKeyStatus(newPage, pageSize)
   }
 
+  const handleAddKeys = async () => {
+    if (!currentRow || !newKeysText.trim()) return
+    setIsAddingKeys(true)
+    try {
+      const response = await addMultiKeys(currentRow.id, newKeysText)
+      if (response?.success) {
+        toast.success(
+          getServerMessage(response) || t('Keys added successfully')
+        )
+        setNewKeysText('')
+        setShowAddKeys(false)
+        queryClient.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
+        queryClient.invalidateQueries({
+          queryKey: channelsQueryKeys.pluginCredentials(currentRow.id),
+        })
+        loadKeyStatus(1, pageSize)
+      } else {
+        handleServerError(response, t('Failed to add keys'))
+      }
+    } catch (error: unknown) {
+      handleServerError(error, t('Failed to add keys'))
+    } finally {
+      setIsAddingKeys(false)
+    }
+  }
+
+  const handleTestKey = async (keyIndex: number) => {
+    if (!currentRow) return
+    setTestingKeyIndices((prev) => ({ ...prev, [keyIndex]: true }))
+    try {
+      const res = await testChannel(currentRow.id, { key_index: keyIndex })
+      const timeMs =
+        typeof res.time === 'number' ? Math.round(res.time * 1000) : undefined
+      setKeyTestResults((prev) => ({
+        ...prev,
+        [keyIndex]: {
+          success: res.success,
+          time: timeMs,
+          message: res.message,
+        },
+      }))
+      if (res.success) {
+        toast.success(
+          timeMs !== undefined
+            ? t('Key test successful ({{time}}ms)', { time: timeMs })
+            : t('Test Passed')
+        )
+      } else {
+        toast.error(res.message || t('Key test failed'))
+      }
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : t('Key test failed')
+      setKeyTestResults((prev) => ({
+        ...prev,
+        [keyIndex]: {
+          success: false,
+          message: msg,
+        },
+      }))
+      handleServerError(error, t('Key test failed'))
+    } finally {
+      setTestingKeyIndices((prev) => ({ ...prev, [keyIndex]: false }))
+    }
+  }
+
+  const handleToggleKey = async (keyIndex: number, currentStatus: number) => {
+    if (!currentRow) return
+    const isEnabled = currentStatus === 1
+    setTogglingKeyIndices((prev) => ({ ...prev, [keyIndex]: true }))
+    try {
+      const response = isEnabled
+        ? await disableMultiKey(currentRow.id, keyIndex)
+        : await enableMultiKey(currentRow.id, keyIndex)
+      if (response?.success) {
+        toast.success(
+          getServerMessage(response) ||
+            (isEnabled ? t('Key disabled') : t('Key enabled'))
+        )
+        setKeys((prev) =>
+          prev.map((k) =>
+            k.index === keyIndex
+              ? {
+                  ...k,
+                  status: isEnabled ? 2 : 1,
+                  reason: isEnabled ? t('Manual Disabled') : undefined,
+                  disabled_time: isEnabled
+                    ? Math.floor(Date.now() / 1000)
+                    : undefined,
+                }
+              : k
+          )
+        )
+        if (isEnabled) {
+          setEnabledCount((c) => Math.max(0, c - 1))
+          setManualDisabledCount((c) => c + 1)
+        } else {
+          if (currentStatus === 2) {
+            setManualDisabledCount((c) => Math.max(0, c - 1))
+          } else if (currentStatus === 3) {
+            setAutoDisabledCount((c) => Math.max(0, c - 1))
+          }
+          setEnabledCount((c) => c + 1)
+        }
+        queryClient.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
+      } else {
+        handleServerError(
+          response,
+          isEnabled ? t('Failed to disable key') : t('Failed to enable key')
+        )
+      }
+    } catch (error: unknown) {
+      handleServerError(
+        error,
+        isEnabled ? t('Failed to disable key') : t('Failed to enable key')
+      )
+    } finally {
+      setTogglingKeyIndices((prev) => ({ ...prev, [keyIndex]: false }))
+    }
+  }
+
   const performAction = async () => {
     if (!confirmAction || !currentRow) return
     if (
@@ -228,7 +394,6 @@ export function MultiKeyManageDialog({
       if (response?.success) {
         toast.success(getServerMessage(response) || t('Operation successful'))
         queryClient.invalidateQueries({ queryKey: channelsQueryKeys.lists() })
-        // A plugin channel's edit drawer lists the same lines beside this dialog.
         queryClient.invalidateQueries({
           queryKey: channelsQueryKeys.pluginCredentials(currentRow.id),
         })
@@ -300,13 +465,12 @@ export function MultiKeyManageDialog({
         description={t(
           'Manage multi-key status and configuration for this channel'
         )}
-        // Key balances add a column, which needs the wider dialog.
         contentClassName={cn(
           'flex max-h-[min(90dvh,var(--dialog-available-height))] max-w-5xl flex-col',
-          keyBalances && 'sm:max-w-5xl'
+          keyBalances && 'sm:max-w-6xl'
         )}
         titleClassName='flex items-center gap-2'
-        contentHeight='min(72vh, 720px)'
+        contentHeight='min(76vh, 760px)'
         bodyClassName='space-y-4'
       >
         <div
@@ -335,28 +499,45 @@ export function MultiKeyManageDialog({
           <Separator className='shrink-0' />
 
           {/* Toolbar */}
-          <div className='flex shrink-0 items-center justify-between'>
-            <Select
-              items={MULTI_KEY_FILTER_OPTIONS.map((option) => ({
-                value: option.value,
-                label: t(option.label),
-              }))}
-              value={statusFilter === null ? 'all' : statusFilter.toString()}
-              onValueChange={(v) => v !== null && handleStatusFilterChange(v)}
-            >
-              <SelectTrigger className='w-40'>
-                <SelectValue placeholder={t('All Status')} />
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                <SelectGroup>
-                  {MULTI_KEY_FILTER_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {t(option.label)}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+          <div className='flex shrink-0 flex-wrap items-center justify-between gap-2'>
+            <div className='flex items-center gap-2'>
+              <Select
+                items={MULTI_KEY_FILTER_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: t(option.label),
+                }))}
+                value={statusFilter === null ? 'all' : statusFilter.toString()}
+                onValueChange={(v) => v !== null && handleStatusFilterChange(v)}
+              >
+                <SelectTrigger className='w-36 sm:w-40'>
+                  <SelectValue placeholder={t('All Status')} />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    {MULTI_KEY_FILTER_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {t(option.label)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+
+              <Button
+                variant={showAddKeys ? 'secondary' : 'default'}
+                size='sm'
+                onClick={() => setShowAddKeys((prev) => !prev)}
+                disabled={!canEditSensitive}
+                title={
+                  canEditSensitive
+                    ? undefined
+                    : t('No permission to perform this action')
+                }
+              >
+                <Plus className='mr-1.5 h-4 w-4' />
+                {t('Add Keys')}
+              </Button>
+            </div>
 
             <div className='flex items-center gap-2'>
               <Button
@@ -365,7 +546,7 @@ export function MultiKeyManageDialog({
                 onClick={() => loadKeyStatus()}
                 disabled={isLoading}
               >
-                <RefreshCw className='h-4 w-4' />
+                <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} />
               </Button>
 
               {manualDisabledCount + autoDisabledCount > 0 && (
@@ -374,7 +555,7 @@ export function MultiKeyManageDialog({
                   size='sm'
                   onClick={() => openConfirm({ type: 'enable-all' })}
                 >
-                  <Power className='mr-2 h-4 w-4' />
+                  <Power className='mr-1.5 h-4 w-4' />
                   {t('Enable All')}
                 </Button>
               )}
@@ -385,7 +566,7 @@ export function MultiKeyManageDialog({
                   size='sm'
                   onClick={() => openConfirm({ type: 'disable-all' })}
                 >
-                  <PowerOff className='mr-2 h-4 w-4' />
+                  <PowerOff className='mr-1.5 h-4 w-4' />
                   {t('Disable All')}
                 </Button>
               )}
@@ -405,12 +586,71 @@ export function MultiKeyManageDialog({
                       : t('No permission to perform this action')
                   }
                 >
-                  <Trash2 className='mr-2 h-4 w-4' />
+                  <Trash2 className='mr-1.5 h-4 w-4' />
                   {t('Delete Auto-Disabled')}
                 </Button>
               )}
             </div>
           </div>
+
+          {/* Inline Add Keys Panel */}
+          {showAddKeys && (
+            <div className='bg-muted/40 shrink-0 space-y-3 rounded-lg border p-3.5'>
+              <div className='flex items-center justify-between'>
+                <div className='flex items-center gap-2'>
+                  <Key className='text-primary h-4 w-4' />
+                  <span className='text-sm font-medium'>{t('Add API Keys')}</span>
+                </div>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='h-7 w-7 p-0'
+                  onClick={() => setShowAddKeys(false)}
+                >
+                  <X className='h-4 w-4' />
+                </Button>
+              </div>
+              <Textarea
+                value={newKeysText}
+                onChange={(e) => setNewKeysText(e.target.value)}
+                placeholder={t(
+                  'Enter one key per line, e.g.\nsk-...\nsk-...'
+                )}
+                rows={3}
+                className='min-h-[72px] resize-y font-mono text-xs'
+              />
+              <div className='flex items-center justify-between'>
+                <span className='text-muted-foreground text-xs'>
+                  {t('Duplicate keys will be automatically filtered')}
+                </span>
+                <div className='flex items-center gap-2'>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => {
+                      setNewKeysText('')
+                      setShowAddKeys(false)
+                    }}
+                    disabled={isAddingKeys}
+                  >
+                    {t('Cancel')}
+                  </Button>
+                  <Button
+                    variant='default'
+                    size='sm'
+                    onClick={handleAddKeys}
+                    disabled={!newKeysText.trim() || isAddingKeys}
+                  >
+                    {isAddingKeys && (
+                      <Loader2 className='mr-1.5 h-3.5 w-3.5 animate-spin' />
+                    )}
+                    {t('Add Keys')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {!canEditSensitive && (
             <p className='text-muted-foreground text-xs'>
               {t('No permission to perform this action')}
@@ -432,22 +672,118 @@ export function MultiKeyManageDialog({
             {!isLoading && !(keys.length === 0) && (
               <StaticDataTable
                 className='rounded-none border-0'
-                tableClassName='min-w-[800px]'
+                tableClassName='min-w-[840px]'
                 data={keys}
                 getRowKey={(key) => key.index}
                 columns={[
                   {
                     id: 'index',
                     header: t('Index'),
-                    className: 'w-20',
-                    cellClassName: 'font-mono text-sm',
+                    className: 'w-16',
+                    cellClassName: 'font-mono text-sm text-muted-foreground',
                     cell: (key) => `#${key.index + 1}`,
+                  },
+                  {
+                    id: 'key',
+                    header: t('Key'),
+                    className: 'w-48',
+                    cell: (key) => (
+                      <div className='flex max-w-[200px] items-center gap-1.5'>
+                        <code className='bg-muted/80 text-foreground truncate rounded px-1.5 py-0.5 font-mono text-xs select-all'>
+                          {key.key_preview || '-'}
+                        </code>
+                        {key.key_preview && (
+                          <CopyButton
+                            value={key.key_preview}
+                            className='h-6 w-6 shrink-0'
+                            iconClassName='h-3 w-3'
+                          />
+                        )}
+                      </div>
+                    ),
                   },
                   {
                     id: 'status',
                     header: t('Status'),
-                    className: 'w-32',
-                    cell: (key) => renderStatusBadge(key.status),
+                    className: 'w-48',
+                    cell: (key) => {
+                      const isKeyToggling = !!togglingKeyIndices[key.index]
+                      return (
+                        <div className='flex items-center gap-2.5'>
+                          <Switch
+                            size='sm'
+                            checked={key.status === 1}
+                            disabled={isKeyToggling}
+                            onCheckedChange={() =>
+                              handleToggleKey(key.index, key.status)
+                            }
+                            aria-label={t('Toggle Key')}
+                          />
+                          {isKeyToggling && (
+                            <Loader2 className='text-muted-foreground h-3.5 w-3.5 animate-spin' />
+                          )}
+                          {renderStatusBadge(key.status)}
+                        </div>
+                      )
+                    },
+                  },
+                  {
+                    id: 'test',
+                    header: t('Verification'),
+                    className: 'w-44',
+                    cell: (key) => {
+                      const isTesting = !!testingKeyIndices[key.index]
+                      const testResult = keyTestResults[key.index]
+                      return (
+                        <div className='flex items-center gap-2'>
+                          <Button
+                            variant='outline'
+                            size='sm'
+                            className='h-7 px-2.5 text-xs'
+                            onClick={() => handleTestKey(key.index)}
+                            disabled={isTesting}
+                          >
+                            {isTesting ? (
+                              <Loader2 className='mr-1 h-3 w-3 animate-spin' />
+                            ) : (
+                              <Play className='mr-1 h-3 w-3 fill-current' />
+                            )}
+                            {t('Test')}
+                          </Button>
+                          {testResult &&
+                            (testResult.success ? (
+                              <span
+                                className='bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-xs'
+                                title={t('Test Passed')}
+                              >
+                                <CheckCircle2 className='h-3 w-3' />
+                                {testResult.time !== undefined
+                                  ? `${testResult.time}ms`
+                                  : t('Pass')}
+                              </span>
+                            ) : (
+                              <TooltipProvider delay={100}>
+                                <Tooltip>
+                                  <TooltipTrigger
+                                    render={
+                                      <span className='bg-destructive/10 text-destructive border-destructive/20 inline-flex cursor-pointer items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-xs'>
+                                        <AlertCircle className='h-3 w-3' />
+                                        {t('Failed')}
+                                      </span>
+                                    }
+                                  />
+                                  <TooltipContent
+                                    side='top'
+                                    className='max-w-xs break-all'
+                                  >
+                                    {testResult.message || t('Key test failed')}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ))}
+                        </div>
+                      )
+                    },
                   },
                   ...(keyBalances
                     ? [
@@ -459,11 +795,9 @@ export function MultiKeyManageDialog({
                           cell: (key: KeyStatus) => {
                             const result = keyBalances[String(key.index)]
                             if (!result) return '-'
-                            // Wraps, so the key actions stay in view.
                             return (
                               <div className='max-w-56 space-y-0.5 whitespace-normal'>
                                 <div className='font-medium'>
-                                  {/* A key has no USD balance of its own. */}
                                   {formatChannelBalanceSummary(
                                     result,
                                     Number.NaN,
@@ -483,7 +817,7 @@ export function MultiKeyManageDialog({
                   {
                     id: 'reason',
                     header: t('Disabled Reason'),
-                    className: 'min-w-[200px]',
+                    className: 'min-w-[160px]',
                     cellClassName: 'max-w-xs truncate text-sm',
                     cell: (key) =>
                       key.reason ? translateServerText(t, key.reason) : '-',
@@ -491,14 +825,14 @@ export function MultiKeyManageDialog({
                   {
                     id: 'disabled-time',
                     header: t('Disabled Time'),
-                    className: 'w-44',
+                    className: 'w-40',
                     cellClassName: 'text-muted-foreground text-sm',
                     cell: (key) => formatKeyTimestamp(key.disabled_time),
                   },
                   {
                     id: 'actions',
                     header: t('Actions'),
-                    className: 'text-right',
+                    className: 'w-24 text-right',
                     cell: (key) => (
                       <MultiKeyTableRowActions
                         keyIndex={key.index}
