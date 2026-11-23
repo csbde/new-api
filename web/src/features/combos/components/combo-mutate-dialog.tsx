@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
+import { MultiSelect } from '@/components/multi-select'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
@@ -24,9 +25,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { getEnabledModels } from '@/features/channels/api'
+import { getEnabledModels, getGroups } from '@/features/channels/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
 import { createCombo, updateCombo } from '../api'
@@ -53,7 +55,7 @@ export function ComboMutateDialog({
   const [strategy, setStrategy] = useState<ComboStrategy>('fallback')
   const [models, setModels] = useState<string[]>([])
   const [customModel, setCustomModel] = useState('')
-  const [group, setGroup] = useState('')
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([])
   const [status, setStatus] = useState<number>(1)
 
   // Smart Router settings
@@ -75,6 +77,22 @@ export function ComboMutateDialog({
     queryFn: async () => requireServerSuccess(await getEnabledModels()),
     enabled: open,
   })
+
+  // Fetch available groups
+  const { data: groupsData, isLoading: isLoadingGroups } = useQuery({
+    queryKey: ['groups'],
+    queryFn: async () => requireServerSuccess(await getGroups()),
+    enabled: open,
+  })
+
+  const groupOptions = useMemo(() => {
+    const list = groupsData?.data || []
+    const all = new Set([...list, ...selectedGroups])
+    return [...all].map((g) => ({
+      value: g,
+      label: g,
+    }))
+  }, [groupsData, selectedGroups])
 
   const availableModels = useMemo(() => {
     return enabledModelsData?.data || []
@@ -116,7 +134,13 @@ export function ComboMutateDialog({
         setDescription(combo.description || '')
         setStrategy(combo.strategy || 'fallback')
         setModels(combo.models ? [...combo.models] : [])
-        setGroup(combo.group || '')
+        const gList = combo.group
+          ? combo.group
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : []
+        setSelectedGroups(gList)
         setStatus(combo.status ?? 1)
 
         setDecisionModel(combo.settings?.decision_model || '')
@@ -132,7 +156,7 @@ export function ComboMutateDialog({
         setDescription('')
         setStrategy('fallback')
         setModels([])
-        setGroup('')
+        setSelectedGroups([])
         setStatus(1)
 
         setDecisionModel('gpt-4o-mini')
@@ -213,7 +237,7 @@ export function ComboMutateDialog({
         description: description.trim(),
         strategy,
         models,
-        group: group.trim(),
+        group: selectedGroups.join(','),
         status,
         settings: {
           decision_model: decisionModel.trim(),
@@ -587,14 +611,23 @@ export function ComboMutateDialog({
           <div className='grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1'>
             <div className='space-y-1.5'>
               <Label htmlFor='combo-group'>
-                {t('Group Binding (Optional)')}
+                {t('Group Binding')}
               </Label>
-              <Input
-                id='combo-group'
-                value={group}
-                onChange={(e) => setGroup(e.target.value)}
-                placeholder={t('Leave blank for all groups')}
-              />
+              {isLoadingGroups ? (
+                <Skeleton className='h-9 w-full' />
+              ) : (
+                <MultiSelect
+                  id='combo-group'
+                  options={groupOptions}
+                  selected={selectedGroups}
+                  onChange={setSelectedGroups}
+                  placeholder={t('All Groups (Default)')}
+                  allowCreate
+                />
+              )}
+              <p className='text-xs text-muted-foreground'>
+                {t('Leave empty for all groups, or select specific groups (e.g. default, vip) to restrict access.')}
+              </p>
             </div>
 
             <div className='flex items-center justify-between border rounded-md p-3'>

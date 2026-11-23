@@ -261,3 +261,52 @@ func TestComboDBCRUD(t *testing.T) {
 	_, err = model.GetComboById(combo.Id)
 	require.Error(t, err)
 }
+
+func TestComboGroupSupport(t *testing.T) {
+	allGroupCombo := &model.Combo{
+		Name:     "all-group-combo",
+		Group:    "",
+		Strategy: model.ComboStrategyFallback,
+		Models:   []string{"gpt-4o"},
+		Status:   model.ComboStatusEnabled,
+	}
+	assert.Empty(t, allGroupCombo.GetGroups())
+	assert.True(t, allGroupCombo.HasGroup("default"))
+	assert.True(t, allGroupCombo.HasGroup("vip"))
+
+	multiGroupCombo := &model.Combo{
+		Name:     "vip-combo",
+		Group:    "vip, svip",
+		Strategy: model.ComboStrategyFallback,
+		Models:   []string{"claude-3-5-sonnet"},
+		Status:   model.ComboStatusEnabled,
+	}
+	assert.ElementsMatch(t, []string{"vip", "svip"}, multiGroupCombo.GetGroups())
+	assert.True(t, multiGroupCombo.HasGroup("vip"))
+	assert.True(t, multiGroupCombo.HasGroup("svip"))
+	assert.False(t, multiGroupCombo.HasGroup("default"))
+
+	// Test cache and ListEnabledCombosForGroup
+	combosCacheLock.Lock()
+	combosCache = map[string]*model.Combo{
+		allGroupCombo.Name:   allGroupCombo,
+		multiGroupCombo.Name: multiGroupCombo,
+	}
+	combosCacheLock.Unlock()
+
+	defaultCombos := ListEnabledCombosForGroup("default")
+	require.Len(t, defaultCombos, 1)
+	assert.Equal(t, "all-group-combo", defaultCombos[0].Name)
+
+	vipCombos := ListEnabledCombosForGroup("vip")
+	require.Len(t, vipCombos, 2)
+
+	// Test GetGroupsEnabledModels includes combos
+	modelsForDefault := GetGroupsEnabledModels([]string{"default"})
+	assert.Contains(t, modelsForDefault, "all-group-combo")
+	assert.NotContains(t, modelsForDefault, "vip-combo")
+
+	modelsForVip := GetGroupsEnabledModels([]string{"vip"})
+	assert.Contains(t, modelsForVip, "all-group-combo")
+	assert.Contains(t, modelsForVip, "vip-combo")
+}

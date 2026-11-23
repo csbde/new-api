@@ -7878,5 +7878,8 @@
     "Zhipu GLM": "智谱GLM",
     "Zhipu V4": "智谱 V4",
     "Zoom": "缩放"
-  }
+  },
+  "Group Binding": "分组绑定",
+  "All Groups (Default)": "所有分组（默认）",
+  "Leave empty for all groups, or select specific groups (e.g. default, vip) to restrict access.": "留空代表对所有分组可用，或选择特定分组（如 default、vip）进行访问限制。"
 }

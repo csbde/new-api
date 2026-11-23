@@ -99,31 +99,34 @@ func Distribute() func(c *gin.Context) {
 		}
 		if c.GetHeader("X-Internal-Combo") == "" {
 			if combo, isCombo := service.GetComboByName(modelRequest.Model); isCombo && combo.Status == model.ComboStatusEnabled {
-				c.Set("active_combo", combo)
-				c.Set("original_combo_model", modelRequest.Model)
-				switch combo.Strategy {
-				case model.ComboStrategyFusion:
-					c.Set("active_fusion_combo", combo)
-					shouldSelectChannel = false
-				case model.ComboStrategyRoundRobin:
-					targetModel := service.ResolveRoundRobin(combo)
-					if targetModel != "" {
-						modelRequest.Model = targetModel
-						rewriteRequestBodyModel(c, targetModel)
-					}
-				case model.ComboStrategySmartRouter:
-					prompt := extractPromptFromContext(c)
-					targetModel := service.ResolveSmartRouter(c.Request.Context(), c, combo, prompt)
-					if targetModel != "" {
-						modelRequest.Model = targetModel
-						rewriteRequestBodyModel(c, targetModel)
-					}
-				case model.ComboStrategyFallback:
-					if len(combo.Models) > 0 {
-						targetModel := combo.Models[0]
-						c.Set("combo_fallback_index", 0)
-						modelRequest.Model = targetModel
-						rewriteRequestBodyModel(c, targetModel)
+				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+				if combo.HasGroup(usingGroup) {
+					c.Set("active_combo", combo)
+					c.Set("original_combo_model", modelRequest.Model)
+					switch combo.Strategy {
+					case model.ComboStrategyFusion:
+						c.Set("active_fusion_combo", combo)
+						shouldSelectChannel = false
+					case model.ComboStrategyRoundRobin:
+						targetModel := service.ResolveRoundRobin(combo)
+						if targetModel != "" {
+							modelRequest.Model = targetModel
+							rewriteRequestBodyModel(c, targetModel)
+						}
+					case model.ComboStrategySmartRouter:
+						prompt := extractPromptFromContext(c)
+						targetModel := service.ResolveSmartRouter(c.Request.Context(), c, combo, prompt)
+						if targetModel != "" {
+							modelRequest.Model = targetModel
+							rewriteRequestBodyModel(c, targetModel)
+						}
+					case model.ComboStrategyFallback:
+						if len(combo.Models) > 0 {
+							targetModel := combo.Models[0]
+							c.Set("combo_fallback_index", 0)
+							modelRequest.Model = targetModel
+							rewriteRequestBodyModel(c, targetModel)
+						}
 					}
 				}
 			}

@@ -289,6 +289,9 @@ func ListModels(c *gin.Context, modelType int) {
 		if modelLimitEnable && !tokenModelLimit[combo.Name] {
 			continue
 		}
+		if slices.ContainsFunc(userOpenAiModels, func(m dto.OpenAIModels) bool { return m.Id == combo.Name }) {
+			continue
+		}
 		userOpenAiModels = append(userOpenAiModels, dto.OpenAIModels{
 			Id:                     combo.Name,
 			Object:                 "model",

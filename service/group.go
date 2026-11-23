@@ -107,7 +107,7 @@ func GetRequestAutoGroups(c *gin.Context, userGroup string) []string {
 	return FilterUserTokenAutoGroups(userGroup, groups)
 }
 
-// GetGroupsEnabledModels 按 groups 顺序获取各分组启用的模型并去重
+// GetGroupsEnabledModels 按 groups 顺序获取各分组启用的模型并去重（包括渠道模型与模型组合）
 func GetGroupsEnabledModels(groups []string) []string {
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
@@ -116,6 +116,12 @@ func GetGroupsEnabledModels(groups []string) []string {
 			if _, ok := seen[modelName]; !ok {
 				seen[modelName] = struct{}{}
 				models = append(models, modelName)
+			}
+		}
+		for _, combo := range ListEnabledCombosForGroup(group) {
+			if _, ok := seen[combo.Name]; !ok {
+				seen[combo.Name] = struct{}{}
+				models = append(models, combo.Name)
 			}
 		}
 	}

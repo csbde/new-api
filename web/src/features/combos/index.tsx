@@ -233,25 +233,26 @@ export function Combos() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className='w-[220px]'>{t('Virtual Model Name')}</TableHead>
-                  <TableHead className='w-[140px]'>{t('Strategy')}</TableHead>
+                  <TableHead className='w-[200px]'>{t('Virtual Model Name')}</TableHead>
+                  <TableHead className='w-[130px]'>{t('Strategy')}</TableHead>
+                  <TableHead className='w-[140px]'>{t('Groups')}</TableHead>
                   <TableHead>{t('Target Models')}</TableHead>
-                  <TableHead className='w-[190px]'>{t('Configuration')}</TableHead>
-                  <TableHead className='w-[100px] text-center'>{t('Status')}</TableHead>
-                  <TableHead className='w-[110px] text-right'>{t('Actions')}</TableHead>
+                  <TableHead className='w-[180px]'>{t('Configuration')}</TableHead>
+                  <TableHead className='w-[90px] text-center'>{t('Status')}</TableHead>
+                  <TableHead className='w-[100px] text-right'>{t('Actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading && (
                   <TableRow>
-                    <TableCell colSpan={6} className='text-center py-8 text-muted-foreground'>
+                    <TableCell colSpan={7} className='text-center py-8 text-muted-foreground'>
                       {t('Loading combos...')}
                     </TableCell>
                   </TableRow>
                 )}
                 {!isLoading && combos.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className='text-center py-12 text-muted-foreground'>
+                    <TableCell colSpan={7} className='text-center py-12 text-muted-foreground'>
                       {t('No combos found. Click "Create Combo" to add your first routing combo.')}
                     </TableCell>
                   </TableRow>
@@ -272,6 +273,26 @@ export function Combos() {
                       </TableCell>
 
                       <TableCell>{getStrategyBadge(combo.strategy)}</TableCell>
+
+                      <TableCell>
+                        {!combo.group || combo.group === 'all' ? (
+                          <Badge variant='outline' className='text-xs text-muted-foreground'>
+                            {t('All Groups')}
+                          </Badge>
+                        ) : (
+                          <div className='flex flex-wrap gap-1'>
+                            {combo.group
+                              .split(',')
+                              .map((g) => g.trim())
+                              .filter(Boolean)
+                              .map((g) => (
+                                <Badge key={g} variant='secondary' className='text-xs font-mono py-0.5'>
+                                  {g}
+                                </Badge>
+                              ))}
+                          </div>
+                        )}
+                      </TableCell>
 
                       <TableCell>
                         <div className='flex flex-wrap gap-1'>

@@ -7878,5 +7878,8 @@
     "Zhipu GLM": "Zhipu GLM",
     "Zhipu V4": "Zhipu V 4",
     "Zoom": "ズーム"
-  }
+  },
+  "Group Binding": "グループバインド",
+  "All Groups (Default)": "すべてのグループ（デフォルト）",
+  "Leave empty for all groups, or select specific groups (e.g. default, vip) to restrict access.": "空欄の場合は全グループで利用可能です。特定のグループ（default、vip など）を選択してアクセスを制限することもできます。"
 }

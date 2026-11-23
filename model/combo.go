@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -65,6 +66,36 @@ func (c *Combo) AfterFind(tx *gorm.DB) error {
 		_ = common.UnmarshalJsonStr(c.SettingsJSON, c.Settings)
 	}
 	return nil
+}
+
+// GetGroups returns the list of groups this combo is bound to, or empty if available to all groups.
+func (c *Combo) GetGroups() []string {
+	trimmed := strings.TrimSpace(c.Group)
+	if trimmed == "" || trimmed == "all" {
+		return []string{}
+	}
+	parts := strings.Split(trimmed, ",")
+	groups := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item != "" {
+			groups = append(groups, item)
+		}
+	}
+	return groups
+}
+
+// HasGroup reports whether this combo is available for the given group.
+func (c *Combo) HasGroup(group string) bool {
+	trimmed := strings.TrimSpace(c.Group)
+	if trimmed == "" || trimmed == "all" {
+		return true
+	}
+	if group == "" {
+		return false
+	}
+	groups := c.GetGroups()
+	return slices.Contains(groups, group)
 }
 
 func (c *Combo) BeforeSave(tx *gorm.DB) error {

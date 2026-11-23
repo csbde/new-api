@@ -7878,5 +7878,8 @@
     "Zhipu GLM": "Zhipu GLM",
     "Zhipu V4": "Zhipu V4",
     "Zoom": "Zoom"
-  }
+  },
+  "Group Binding": "Group Binding",
+  "All Groups (Default)": "All Groups (Default)",
+  "Leave empty for all groups, or select specific groups (e.g. default, vip) to restrict access.": "Leave empty for all groups, or select specific groups (e.g. default, vip) to restrict access."
 }

@@ -79,7 +79,7 @@ func ListEnabledCombosForGroup(group string) []*model.Combo {
 	defer combosCacheLock.RUnlock()
 	list := make([]*model.Combo, 0, len(combosCache))
 	for _, c := range combosCache {
-		if c.Group == "" || c.Group == "all" || c.Group == group {
+		if c.HasGroup(group) {
 			list = append(list, c)
 		}
 	}
