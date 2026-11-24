@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -26,12 +27,15 @@ func (transport emailHTTPTransport) RoundTrip(request *http.Request) (*http.Resp
 
 func configureEmailDelivery(t *testing.T, options map[string]string) {
 	t.Helper()
+	require.NoError(t, i18n.Init())
 	common.OptionMapRWMutex.Lock()
 	original := common.OptionMap
 	common.OptionMap = options
 	common.OptionMapRWMutex.Unlock()
 	originalTransport := http.DefaultTransport
 	originalFrom, originalAccount, originalServer := common.SMTPFrom, common.SMTPAccount, common.SMTPServer
+	originalRedis := common.RedisEnabled
+	common.RedisEnabled = false
 	common.SMTPFrom, common.SMTPAccount, common.SMTPServer = "", "", ""
 	t.Cleanup(func() {
 		common.OptionMapRWMutex.Lock()
@@ -39,6 +43,7 @@ func configureEmailDelivery(t *testing.T, options map[string]string) {
 		common.OptionMapRWMutex.Unlock()
 		http.DefaultTransport = originalTransport
 		common.SMTPFrom, common.SMTPAccount, common.SMTPServer = originalFrom, originalAccount, originalServer
+		common.RedisEnabled = originalRedis
 	})
 }
 
@@ -248,4 +253,156 @@ func TestEmailKeyStatusIsDerivedAndReadOnly(t *testing.T) {
 	UpdateOption(context)
 	assert.Contains(t, response.Body.String(), `"success":false`)
 	assert.Contains(t, response.Body.String(), "read-only")
+}
+
+func TestTestEmailValidatesRecipient(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		expectMsg string
+	}{
+		{"missing recipient", `{}`, "Recipient email address is required"},
+		{"empty recipient", `{"recipient": "   "}`, "Recipient email address is required"},
+		{"invalid recipient", `{"recipient": "not-an-email"}`, "Invalid email address"},
+		{"malformed json", `not-json`, "Invalid parameters"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(response)
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/option/test_email", strings.NewReader(tc.body))
+			TestEmail(c)
+			assert.Contains(t, response.Body.String(), `"success":false`)
+			assert.Contains(t, response.Body.String(), tc.expectMsg)
+		})
+	}
+}
+
+func TestTestEmailDeliversWithSavedConfig(t *testing.T) {
+	configureEmailDelivery(t, map[string]string{
+		"EmailProvider": "resend",
+		"ResendApiKey":  "saved-resend-key",
+		"ResendFrom":    "System <noreply@example.com>",
+	})
+
+	calls := 0
+	http.DefaultTransport = emailHTTPTransport(func(request *http.Request) (*http.Response, error) {
+		calls++
+		assert.Equal(t, "https://api.resend.com/emails", request.URL.String())
+		assert.Equal(t, "Bearer saved-resend-key", request.Header.Get("Authorization"))
+
+		var body struct {
+			From    string   `json:"from"`
+			To      []string `json:"to"`
+			Subject string   `json:"subject"`
+			HTML    string   `json:"html"`
+		}
+		require.NoError(t, common.DecodeJson(request.Body, &body))
+		assert.Equal(t, `"System" <noreply@example.com>`, body.From)
+		assert.Equal(t, []string{"admin@example.com"}, body.To)
+		assert.Contains(t, body.Subject, "Test Email")
+		assert.Contains(t, body.HTML, "test email")
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"id":"test-email-id"}`)), Header: make(http.Header)}, nil
+	})
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/option/test_email", strings.NewReader(`{"recipient":"admin@example.com"}`))
+	TestEmail(c)
+
+	assert.Equal(t, 1, calls)
+	assert.Contains(t, response.Body.String(), `"success":true`)
+	assert.Contains(t, response.Body.String(), `"message_key":"Test email sent successfully"`)
+}
+
+func TestTestEmailDeliversWithDraftOverrides(t *testing.T) {
+	configureEmailDelivery(t, map[string]string{
+		"EmailProvider": "smtp",
+		"ResendApiKey":  "saved-key",
+		"ResendFrom":    "saved@example.com",
+	})
+
+	calls := 0
+	http.DefaultTransport = emailHTTPTransport(func(request *http.Request) (*http.Response, error) {
+		calls++
+		assert.Equal(t, "Bearer draft-key", request.Header.Get("Authorization"))
+
+		var body struct {
+			From string   `json:"from"`
+			To   []string `json:"to"`
+		}
+		require.NoError(t, common.DecodeJson(request.Body, &body))
+		assert.Equal(t, `"API Gateway" <draft@example.com>`, body.From)
+		assert.Equal(t, []string{"recipient@example.com"}, body.To)
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"id":"draft-email-id"}`)), Header: make(http.Header)}, nil
+	})
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/option/test_email", strings.NewReader(`{
+		"recipient": "recipient@example.com",
+		"EmailProvider": "resend",
+		"ResendApiKey": "draft-key",
+		"ResendFrom": "draft@example.com"
+	}`))
+	TestEmail(c)
+
+	assert.Equal(t, 1, calls)
+	assert.Contains(t, response.Body.String(), `"success":true`)
+	// Verify saved options were not mutated
+	assert.Equal(t, "smtp", common.OptionMap["EmailProvider"])
+	assert.Equal(t, "saved-key", common.OptionMap["ResendApiKey"])
+}
+
+func TestTestEmailFallsBackToSavedCredentialsWhenDraftTokenBlank(t *testing.T) {
+	configureEmailDelivery(t, map[string]string{
+		"EmailProvider": "smtp",
+		"ResendApiKey":  "saved-key-fallback",
+		"ResendFrom":    "saved@example.com",
+	})
+
+	calls := 0
+	http.DefaultTransport = emailHTTPTransport(func(request *http.Request) (*http.Response, error) {
+		calls++
+		assert.Equal(t, "Bearer saved-key-fallback", request.Header.Get("Authorization"))
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"id":"fallback-email-id"}`)), Header: make(http.Header)}, nil
+	})
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/option/test_email", strings.NewReader(`{
+		"recipient": "recipient@example.com",
+		"EmailProvider": "resend",
+		"ResendApiKey": "",
+		"ResendFrom": "new-sender@example.com"
+	}`))
+	TestEmail(c)
+
+	assert.Equal(t, 1, calls)
+	assert.Contains(t, response.Body.String(), `"success":true`)
+}
+
+func TestTestEmailDeliveryFailureReturnsErrorWithoutLeakingCredentials(t *testing.T) {
+	configureEmailDelivery(t, map[string]string{
+		"EmailProvider": "resend",
+		"ResendApiKey":  "super-secret-key-12345",
+		"ResendFrom":    "sender@example.com",
+	})
+
+	http.DefaultTransport = emailHTTPTransport(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: 401,
+			Body:       io.NopCloser(strings.NewReader(`{"message":"unauthorized with key super-secret-key-12345"}`)),
+			Header:     make(http.Header),
+		}, nil
+	})
+
+	response := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(response)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/option/test_email", strings.NewReader(`{"recipient":"admin@example.com"}`))
+	TestEmail(c)
+
+	assert.Contains(t, response.Body.String(), `"success":false`)
+	assert.NotContains(t, response.Body.String(), "super-secret-key-12345")
 }

@@ -88,6 +88,10 @@ const (
 	MsgSecurityEventLoginLinked          = "email.security_event.login_linked"
 	MsgSecurityEventLoginUnlinked        = "email.security_event.login_unlinked"
 	MsgSecurityEventWeChatLinked         = "email.security_event.wechat_linked"
+
+	MsgEmailTestSubject  = "email.test.subject"
+	MsgEmailTestGreeting = "email.test.greeting"
+	MsgEmailTestContent  = "email.test.content"
 )
 
 // Low-quota notices, in the recipient's saved language

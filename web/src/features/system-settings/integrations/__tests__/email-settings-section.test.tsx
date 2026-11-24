@@ -341,4 +341,45 @@ describe('email delivery settings', () => {
       ])
     }
   })
+
+  it('opens test email dialog and sends test email with draft values', async () => {
+    const postRequest = vi
+      .spyOn(api, 'post')
+      .mockResolvedValue({ data: { success: true } })
+
+    const user = renderEmail({
+      EmailProvider: 'smtp',
+      SMTPServer: 'smtp.custom.org',
+      SMTPPort: '465',
+    })
+
+    const testBtn = screen.getByRole('button', { name: 'Test Email' })
+    expect(testBtn).toBeVisible()
+    await user.click(testBtn)
+
+    expect(screen.getByRole('heading', { name: 'Test Email' })).toBeVisible()
+
+    const recipientInput = screen.getByRole('textbox', {
+      name: 'Recipient Email',
+    })
+    expect(recipientInput).toBeVisible()
+
+    await user.clear(recipientInput)
+    await user.type(recipientInput, 'testadmin@example.com')
+
+    const sendBtn = screen.getByRole('button', { name: 'Send Test Email' })
+    await user.click(sendBtn)
+
+    await waitFor(() =>
+      expect(postRequest).toHaveBeenCalledWith(
+        '/api/option/test_email',
+        expect.objectContaining({
+          recipient: 'testadmin@example.com',
+          EmailProvider: 'smtp',
+          SMTPServer: 'smtp.custom.org',
+          SMTPPort: '465',
+        })
+      )
+    )
+  })
 })

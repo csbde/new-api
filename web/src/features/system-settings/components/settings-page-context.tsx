@@ -110,6 +110,7 @@ type SettingsPageFormActionsProps = {
   resetLabel?: string
   resetVariant?: ComponentProps<typeof Button>['variant']
   saveButtonRef?: RefObject<HTMLButtonElement | null>
+  children?: ReactNode
 }
 
 export function SettingsPageFormActions(props: SettingsPageFormActionsProps) {
@@ -132,6 +133,7 @@ export function SettingsPageFormActions(props: SettingsPageFormActionsProps) {
           <span>{t(props.resetLabel ?? 'Reset')}</span>
         </Button>
       )}
+      {props.children}
       <Button
         ref={props.saveButtonRef}
         type='button'

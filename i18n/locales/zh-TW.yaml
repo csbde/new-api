@@ -72,6 +72,9 @@ email.security_event.email_confirmed: "電子郵件地址已確認"
 email.security_event.login_linked: "已綁定登入帳號 {{.Provider}}"
 email.security_event.login_unlinked: "已解綁登入帳號"
 email.security_event.wechat_linked: "已綁定微信帳號"
+email.test.subject: "[{{.SystemName}}] 測試郵件"
+email.test.greeting: "您好！這是一封來自 {{.SystemName}} 的測試郵件。"
+email.test.content: "如果您收到了這封郵件，說明您的郵件服務配置正確，可以正常發送郵件。"
 
 # Low-quota notices
 notify.quota_low_title: "您的額度即將用盡"

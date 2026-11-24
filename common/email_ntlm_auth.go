@@ -3,25 +3,39 @@ package common
 import (
 	"errors"
 	"net/smtp"
+	"slices"
 	"strings"
 
 	ntlmssp "github.com/Azure/go-ntlmssp"
 )
 
 type smtpAutoAuth struct {
-	username string
-	password string
-	mech     string
+	username   string
+	password   string
+	server     string
+	forceLogin bool
+	mech       string
 }
 
 func AutoSMTPAuth(username, password string) smtp.Auth {
-	return &smtpAutoAuth{username: username, password: password}
+	return AutoSMTPAuthWithConfig(username, password, SMTPServer, SMTPForceAuthLogin)
+}
+
+func AutoSMTPAuthWithConfig(username, password, server string, forceLogin bool) smtp.Auth {
+	return &smtpAutoAuth{
+		username:   username,
+		password:   password,
+		server:     server,
+		forceLogin: forceLogin,
+	}
 }
 
 func (a *smtpAutoAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
-	useLoginAuth := SMTPForceAuthLogin
-	if !useLoginAuth && shouldUseSMTPLoginAuth() {
-		useLoginAuth = !(server != nil && len(server.Auth) == 1 && smtpServerSupportsAuth(server, "NTLM"))
+	useLoginAuth := a.forceLogin
+	if !useLoginAuth {
+		if isOutlookServer(a.username) || slices.Contains(EmailLoginAuthServerList, a.server) {
+			useLoginAuth = !(server != nil && len(server.Auth) == 1 && smtpServerSupportsAuth(server, "NTLM"))
+		}
 	}
 	if useLoginAuth {
 		a.mech = "LOGIN"
@@ -31,7 +45,7 @@ func (a *smtpAutoAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
 	switch {
 	case smtpServerSupportsAuth(server, "PLAIN"):
 		a.mech = "PLAIN"
-		return smtp.PlainAuth("", a.username, a.password, SMTPServer).Start(server)
+		return smtp.PlainAuth("", a.username, a.password, a.server).Start(server)
 	case smtpServerSupportsAuth(server, "LOGIN"):
 		a.mech = "LOGIN"
 		return "LOGIN", []byte{}, nil
@@ -44,7 +58,7 @@ func (a *smtpAutoAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
 		return "NTLM", negotiateMessage, nil
 	default:
 		a.mech = "PLAIN"
-		return smtp.PlainAuth("", a.username, a.password, SMTPServer).Start(server)
+		return smtp.PlainAuth("", a.username, a.password, a.server).Start(server)
 	}
 }
 

@@ -8,8 +8,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -440,4 +442,114 @@ func UpdateOption(c *gin.Context) {
 		"success": true,
 		"message": "",
 	})
+}
+
+type FlexiblePort int
+
+func (p *FlexiblePort) UnmarshalJSON(data []byte) error {
+	str := strings.Trim(string(data), `"`)
+	if str == "" || str == "null" {
+		return nil
+	}
+	val, err := strconv.Atoi(str)
+	if err != nil {
+		return err
+	}
+	*p = FlexiblePort(val)
+	return nil
+}
+
+type TestEmailRequest struct {
+	Recipient              string        `json:"recipient"`
+	Provider               *string       `json:"EmailProvider"`
+	SMTPServer             *string       `json:"SMTPServer"`
+	SMTPPort               *FlexiblePort `json:"SMTPPort"`
+	SMTPAccount            *string       `json:"SMTPAccount"`
+	SMTPFrom               *string       `json:"SMTPFrom"`
+	SMTPToken              *string       `json:"SMTPToken"`
+	SMTPSSLEnabled         *bool         `json:"SMTPSSLEnabled"`
+	SMTPStartTLSEnabled    *bool         `json:"SMTPStartTLSEnabled"`
+	SMTPInsecureSkipVerify *bool         `json:"SMTPInsecureSkipVerify"`
+	SMTPForceAuthLogin     *bool         `json:"SMTPForceAuthLogin"`
+	ResendApiKey           *string       `json:"ResendApiKey"`
+	ResendFrom             *string       `json:"ResendFrom"`
+}
+
+func TestEmail(c *gin.Context) {
+	var req TestEmailRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
+		return
+	}
+
+	req.Recipient = strings.TrimSpace(req.Recipient)
+	if req.Recipient == "" {
+		common.ApiErrorT(c, "Recipient email address is required")
+		return
+	}
+	if err := common.Validate.Var(req.Recipient, "required,email"); err != nil {
+		common.ApiErrorT(c, "Invalid email address")
+		return
+	}
+
+	cfg := common.GetCurrentEmailConfig()
+	if req.Provider != nil && *req.Provider != "" {
+		cfg.Provider = *req.Provider
+	}
+	if req.SMTPServer != nil {
+		cfg.SMTPServer = strings.TrimSpace(*req.SMTPServer)
+	}
+	if req.SMTPPort != nil && *req.SMTPPort > 0 {
+		cfg.SMTPPort = int(*req.SMTPPort)
+	}
+	if req.SMTPAccount != nil {
+		cfg.SMTPAccount = strings.TrimSpace(*req.SMTPAccount)
+	}
+	if req.SMTPFrom != nil {
+		cfg.SMTPFrom = strings.TrimSpace(*req.SMTPFrom)
+	}
+	if req.SMTPToken != nil && strings.TrimSpace(*req.SMTPToken) != "" {
+		cfg.SMTPToken = strings.TrimSpace(*req.SMTPToken)
+	}
+	if req.SMTPSSLEnabled != nil {
+		cfg.SMTPSSLEnabled = *req.SMTPSSLEnabled
+	}
+	if req.SMTPStartTLSEnabled != nil {
+		cfg.SMTPStartTLSEnabled = *req.SMTPStartTLSEnabled
+	}
+	if req.SMTPInsecureSkipVerify != nil {
+		cfg.SMTPInsecureSkipVerify = *req.SMTPInsecureSkipVerify
+	}
+	if req.SMTPForceAuthLogin != nil {
+		cfg.SMTPForceAuthLogin = *req.SMTPForceAuthLogin
+	}
+	if req.ResendApiKey != nil && strings.TrimSpace(*req.ResendApiKey) != "" {
+		cfg.ResendApiKey = strings.TrimSpace(*req.ResendApiKey)
+	}
+	if req.ResendFrom != nil && strings.TrimSpace(*req.ResendFrom) != "" {
+		cfg.ResendFrom = strings.TrimSpace(*req.ResendFrom)
+	}
+
+	systemName := map[string]any{"SystemName": common.SystemName}
+	subject := i18n.T(c, i18n.MsgEmailTestSubject, systemName)
+	greeting := i18n.T(c, i18n.MsgEmailTestGreeting, systemName)
+	body := i18n.T(c, i18n.MsgEmailTestContent, nil)
+	content := fmt.Sprintf("<p>%s</p><p>%s</p><p style=\"color: #888; font-size: 12px;\">%s</p>",
+		greeting,
+		body,
+		time.Now().Format("2006-01-02 15:04:05 MST"),
+	)
+
+	err := common.SendEmailWithConfig(cfg, subject, req.Recipient, content)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	recordManageAudit(c, "option.test_email", map[string]any{
+		"recipient": req.Recipient,
+		"provider":  cfg.Provider,
+	})
+
+	common.ApiSuccessT(c, "Test email sent successfully", nil)
 }

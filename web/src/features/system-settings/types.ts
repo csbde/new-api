@@ -39,6 +39,27 @@ export type UpdateOptionResponse = {
   message: string
 }
 
+export type TestEmailRequest = {
+  recipient: string
+  EmailProvider?: 'smtp' | 'resend'
+  SMTPServer?: string
+  SMTPPort?: string
+  SMTPAccount?: string
+  SMTPFrom?: string
+  SMTPToken?: string
+  SMTPSSLEnabled?: boolean
+  SMTPStartTLSEnabled?: boolean
+  SMTPInsecureSkipVerify?: boolean
+  SMTPForceAuthLogin?: boolean
+  ResendApiKey?: string
+  ResendFrom?: string
+}
+
+export type TestEmailResponse = {
+  success: boolean
+  message: string
+}
+
 export interface PasskeyDomainChange {
   rp_id: string
   legacy_rp_ids: string

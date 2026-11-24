@@ -17,11 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMemo } from 'react'
+import { Mail } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
 import { PasswordInput } from '@/components/password-input'
+import { Button } from '@/components/ui/button'
 import {
   Form,
   FormControl,
@@ -55,6 +57,7 @@ import {
   parseResendSender,
   type EmailFormValues,
 } from './email-settings-schema'
+import { TestEmailDialog } from './test-email-dialog'
 
 type EmailSettingsSectionProps = {
   defaultValues: Omit<EmailFormValues, 'ResendSenderName'>
@@ -104,6 +107,7 @@ export function EmailSettingsSection({
   })
   const tokensOnly = getCurrencyDisplay().meta.kind === 'tokens'
   const isSaving = form.formState.isSubmitting || updateOption.isPending
+  const [testDialogOpen, setTestDialogOpen] = useState(false)
   useResetForm(form, isSaving ? undefined : initialValues)
 
   const onSubmit = async (values: EmailFormValues) => {
@@ -235,12 +239,28 @@ export function EmailSettingsSection({
 
   return (
     <SettingsSection title={t('Email & Notifications')}>
+      <TestEmailDialog
+        open={testDialogOpen}
+        onOpenChange={setTestDialogOpen}
+        formValues={form.getValues()}
+      />
       <Form {...form}>
         <SettingsForm onSubmit={form.handleSubmit(onSubmit)} autoComplete='off'>
           <SettingsPageFormActions
             onSave={form.handleSubmit(onSubmit)}
             isSaving={isSaving}
-          />
+          >
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              onClick={() => setTestDialogOpen(true)}
+              disabled={isSaving}
+            >
+              <Mail data-icon='inline-start' />
+              <span>{t('Test Email')}</span>
+            </Button>
+          </SettingsPageFormActions>
           <FormField
             control={form.control}
             name='EmailProvider'
@@ -546,7 +566,9 @@ export function EmailSettingsSection({
                     <FormControl>
                       <Input
                         autoComplete='off'
-                        placeholder={t('API Gateway &lt;noreply@example.com&gt;')}
+                        placeholder={t(
+                          'API Gateway &lt;noreply@example.com&gt;'
+                        )}
                         {...field}
                         onChange={(event) => field.onChange(event.target.value)}
                       />

@@ -4,19 +4,107 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"net/mail"
 	"net/smtp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
 
-func generateMessageID() (string, error) {
-	split := strings.Split(SMTPFrom, "@")
+type EmailConfig struct {
+	Provider               string
+	SMTPServer             string
+	SMTPPort               int
+	SMTPAccount            string
+	SMTPFrom               string
+	SMTPToken              string
+	SMTPSSLEnabled         bool
+	SMTPStartTLSEnabled    bool
+	SMTPInsecureSkipVerify bool
+	SMTPForceAuthLogin     bool
+	ResendApiKey           string
+	ResendFrom             string
+}
+
+func GetCurrentEmailConfig() EmailConfig {
+	OptionMapRWMutex.RLock()
+	provider := OptionMap["EmailProvider"]
+	resendKey := OptionMap["ResendApiKey"]
+	resendFrom := OptionMap["ResendFrom"]
+	server := SMTPServer
+	if server == "" && OptionMap["SMTPServer"] != "" {
+		server = OptionMap["SMTPServer"]
+	}
+	port := SMTPPort
+	if port == 0 && OptionMap["SMTPPort"] != "" {
+		port, _ = strconv.Atoi(OptionMap["SMTPPort"])
+	}
+	account := SMTPAccount
+	if account == "" && OptionMap["SMTPAccount"] != "" {
+		account = OptionMap["SMTPAccount"]
+	}
+	from := SMTPFrom
+	if from == "" && OptionMap["SMTPFrom"] != "" {
+		from = OptionMap["SMTPFrom"]
+	}
+	token := SMTPToken
+	if token == "" && OptionMap["SMTPToken"] != "" {
+		token = OptionMap["SMTPToken"]
+	}
+	sslEnabled := SMTPSSLEnabled
+	if val, ok := OptionMap["SMTPSSLEnabled"]; ok && val != "" {
+		sslEnabled = val == "true"
+	}
+	startTLSEnabled := SMTPStartTLSEnabled
+	if val, ok := OptionMap["SMTPStartTLSEnabled"]; ok && val != "" {
+		startTLSEnabled = val == "true"
+	}
+	insecureSkipVerify := SMTPInsecureSkipVerify
+	if val, ok := OptionMap["SMTPInsecureSkipVerify"]; ok && val != "" {
+		insecureSkipVerify = val == "true"
+	}
+	forceAuthLogin := SMTPForceAuthLogin
+	if val, ok := OptionMap["SMTPForceAuthLogin"]; ok && val != "" {
+		forceAuthLogin = val == "true"
+	}
+	OptionMapRWMutex.RUnlock()
+
+	return EmailConfig{
+		Provider:               provider,
+		SMTPServer:             server,
+		SMTPPort:               port,
+		SMTPAccount:            account,
+		SMTPFrom:               from,
+		SMTPToken:              token,
+		SMTPSSLEnabled:         sslEnabled,
+		SMTPStartTLSEnabled:    startTLSEnabled,
+		SMTPInsecureSkipVerify: insecureSkipVerify,
+		SMTPForceAuthLogin:     forceAuthLogin,
+		ResendApiKey:           resendKey,
+		ResendFrom:             resendFrom,
+	}
+}
+
+func generateMessageIDForFrom(from string) (string, error) {
+	addr := from
+	if parsed, err := mail.ParseAddress(from); err == nil && parsed.Address != "" {
+		addr = parsed.Address
+	}
+	split := strings.Split(addr, "@")
 	if len(split) < 2 {
 		return "", fmt.Errorf("invalid SMTP account")
 	}
-	domain := strings.Split(SMTPFrom, "@")[1]
+	domain := split[1]
 	return fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), GetRandomString(12), domain), nil
+}
+
+func generateMessageID() (string, error) {
+	from := SMTPFrom
+	if from == "" {
+		from = SMTPAccount
+	}
+	return generateMessageIDForFrom(from)
 }
 
 func shouldUseSMTPLoginAuth() bool {
@@ -41,13 +129,17 @@ func smtpTLSConfig() *tls.Config {
 	}
 }
 
-func newSMTPClient(addr string) (*smtp.Client, error) {
-	if SMTPSSLEnabled || (SMTPPort == 465 && !SMTPStartTLSEnabled) {
-		conn, err := tls.Dial("tcp", addr, smtpTLSConfig())
+func newSMTPClientWithConfigAddr(cfg EmailConfig, addr string) (*smtp.Client, error) {
+	tlsConfig := &tls.Config{
+		ServerName:         cfg.SMTPServer,
+		InsecureSkipVerify: cfg.SMTPInsecureSkipVerify, // #nosec G402 -- admin-controlled SMTP compatibility option.
+	}
+	if cfg.SMTPSSLEnabled || (cfg.SMTPPort == 465 && !cfg.SMTPStartTLSEnabled) {
+		conn, err := tls.Dial("tcp", addr, tlsConfig)
 		if err != nil {
 			return nil, err
 		}
-		client, err := smtp.NewClient(conn, SMTPServer)
+		client, err := smtp.NewClient(conn, cfg.SMTPServer)
 		if err != nil {
 			_ = conn.Close()
 			return nil, err
@@ -60,13 +152,13 @@ func newSMTPClient(addr string) (*smtp.Client, error) {
 		return nil, err
 	}
 
-	if SMTPStartTLSEnabled {
+	if cfg.SMTPStartTLSEnabled {
 		startTLSSupported, _ := client.Extension("STARTTLS")
 		if !startTLSSupported {
 			_ = client.Close()
 			return nil, fmt.Errorf("SMTP server does not support STARTTLS")
 		}
-		if err := client.StartTLS(smtpTLSConfig()); err != nil {
+		if err := client.StartTLS(tlsConfig); err != nil {
 			_ = client.Close()
 			return nil, err
 		}
@@ -75,58 +167,57 @@ func newSMTPClient(addr string) (*smtp.Client, error) {
 	return client, nil
 }
 
-func SendEmail(subject string, receiver string, content string) error {
-	OptionMapRWMutex.RLock()
-	provider := OptionMap["EmailProvider"]
-	resendKey := OptionMap["ResendApiKey"]
-	resendFrom := OptionMap["ResendFrom"]
-	OptionMapRWMutex.RUnlock()
+func newSMTPClient(addr string) (*smtp.Client, error) {
+	return newSMTPClientWithConfigAddr(GetCurrentEmailConfig(), addr)
+}
+
+func SendEmailWithConfig(cfg EmailConfig, subject string, receiver string, content string) error {
 	// One selector controls delivery. Never fall back to a second provider:
 	// a failed response does not prove that the first provider did not send.
-	switch provider {
+	switch cfg.Provider {
 	case "resend":
-		return sendResendEmail(resendKey, resendFrom, subject, receiver, content)
+		return sendResendEmail(cfg.ResendApiKey, cfg.ResendFrom, subject, receiver, content)
 	case "", "smtp": // Preserve existing installations without a selector.
 	default:
 		return NewMessage("Email sending method must be SMTP or Resend")
 	}
-	if SMTPFrom == "" { // for compatibility
-		SMTPFrom = SMTPAccount
+	from := cfg.SMTPFrom
+	if from == "" { // for compatibility
+		from = cfg.SMTPAccount
 	}
-	id, err2 := generateMessageID()
+	id, err2 := generateMessageIDForFrom(from)
 	if err2 != nil {
 		return err2
 	}
-	if SMTPServer == "" && SMTPAccount == "" {
+	if cfg.SMTPServer == "" && cfg.SMTPAccount == "" {
 		return NewMessage("SMTP server is not configured")
 	}
 	encodedSubject := fmt.Sprintf("=?UTF-8?B?%s?=", base64.StdEncoding.EncodeToString([]byte(subject)))
-	mail := []byte(fmt.Sprintf("To: %s\r\n"+
+	mailContent := []byte(fmt.Sprintf("To: %s\r\n"+
 		"From: %s <%s>\r\n"+
 		"Subject: %s\r\n"+
 		"Date: %s\r\n"+
 		"Message-ID: %s\r\n"+ // 添加 Message-ID 头
 		"Content-Type: text/html; charset=UTF-8\r\n\r\n%s\r\n",
-		receiver, SystemName, SMTPFrom, encodedSubject, time.Now().Format(time.RFC1123Z), id, content))
-	auth := getSMTPAuth()
-	addr := fmt.Sprintf("%s:%d", SMTPServer, SMTPPort)
+		receiver, SystemName, from, encodedSubject, time.Now().Format(time.RFC1123Z), id, content))
+	auth := AutoSMTPAuthWithConfig(cfg.SMTPAccount, cfg.SMTPToken, cfg.SMTPServer, cfg.SMTPForceAuthLogin)
+	addr := fmt.Sprintf("%s:%d", cfg.SMTPServer, cfg.SMTPPort)
 	to := strings.Split(receiver, ";")
-	var err error
-	client, err := newSMTPClient(addr)
+	client, err := newSMTPClientWithConfigAddr(cfg, addr)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
-	if shouldAuthenticateSMTP() {
+	if cfg.SMTPAccount != "" && cfg.SMTPToken != "" {
 		if err = client.Auth(auth); err != nil {
 			return err
 		}
 	}
-	if err = client.Mail(SMTPFrom); err != nil {
+	if err = client.Mail(from); err != nil {
 		return err
 	}
-	for _, receiver := range to {
-		if err = client.Rcpt(receiver); err != nil {
+	for _, rec := range to {
+		if err = client.Rcpt(rec); err != nil {
 			return err
 		}
 	}
@@ -134,7 +225,7 @@ func SendEmail(subject string, receiver string, content string) error {
 	if err != nil {
 		return err
 	}
-	_, err = w.Write(mail)
+	_, err = w.Write(mailContent)
 	if err != nil {
 		return err
 	}
@@ -147,4 +238,8 @@ func SendEmail(subject string, receiver string, content string) error {
 		SysError(LogText("failed to send email to %s: %v", receiver, err))
 	}
 	return err
+}
+
+func SendEmail(subject string, receiver string, content string) error {
+	return SendEmailWithConfig(GetCurrentEmailConfig(), subject, receiver, content)
 }

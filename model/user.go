@@ -1506,6 +1506,9 @@ func GetUsernameById(id int, fromDB bool) (username string, err error) {
 		// Don't return error - fall through to DB
 	}
 	fromDB = true
+	if DB == nil {
+		return "", errors.New("database not initialized")
+	}
 	err = DB.Model(&User{}).Where("id = ?", id).Select("username").Find(&username).Error
 	if err != nil {
 		return "", err

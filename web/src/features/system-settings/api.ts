@@ -26,6 +26,8 @@ import type {
   SystemTaskListResponse,
   SystemTaskFilters,
   SystemTaskResponse,
+  TestEmailRequest,
+  TestEmailResponse,
   UpdateOptionRequest,
   UpdateOptionResponse,
   UpdatePasskeyDomainsRequest,
@@ -33,6 +35,14 @@ import type {
   UpstreamChannelsResponse,
   UpstreamRatiosResponse,
 } from './types'
+
+export async function testEmail(request: TestEmailRequest) {
+  const res = await api.post<TestEmailResponse>(
+    '/api/option/test_email',
+    request
+  )
+  return res.data
+}
 
 export async function getSystemOptions() {
   const res = await api.get<SystemOptionsResponse>('/api/option/')
