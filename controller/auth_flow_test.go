@@ -1166,3 +1166,92 @@ func TestOAuthRegistrationPersistsInviter(t *testing.T) {
 		})
 	}
 }
+
+func TestOIDCVerifiedEmailAutoBind(t *testing.T) {
+	db, dialect := openTaskDialectDatabase(t, &model.User{}, &model.TwoFA{}, &model.PasskeyCredential{}, &model.Log{})
+	oldDB, oldLogDB := model.DB, model.LOG_DB
+	oldMain, oldLog := common.MainDatabaseType(), common.LogDatabaseType()
+	oldRedis, oldRegister := common.RedisEnabled, common.RegisterEnabled
+	model.DB, model.LOG_DB = db, db
+	common.SetDatabaseTypes(dialect, dialect)
+	common.RedisEnabled, common.RegisterEnabled = false, true
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB = oldDB, oldLogDB
+		common.SetDatabaseTypes(oldMain, oldLog)
+		common.RedisEnabled, common.RegisterEnabled = oldRedis, oldRegister
+	})
+
+	eligible := model.User{Username: "eligible", Email: "eligible@example.com", AffCode: "aff-1", Status: common.UserStatusEnabled}
+	unverifiedTarget := model.User{Username: "unverified", Email: "unverified@example.com", AffCode: "aff-2", Status: common.UserStatusEnabled}
+	twoFAUser := model.User{Username: "twofa", Email: "twofa@example.com", AffCode: "aff-3", Status: common.UserStatusEnabled}
+	passkeyUser := model.User{Username: "passkey", Email: "passkey@example.com", AffCode: "aff-4", Status: common.UserStatusEnabled}
+	alreadyBound := model.User{Username: "bound", Email: "bound@example.com", OidcId: "existing-sub", AffCode: "aff-5", Status: common.UserStatusEnabled}
+	disabledUser := model.User{Username: "disabled", Email: "disabled@example.com", AffCode: "aff-6", Status: common.UserStatusDisabled}
+	for _, u := range []*model.User{&eligible, &unverifiedTarget, &twoFAUser, &passkeyUser, &alreadyBound, &disabledUser} {
+		require.NoError(t, db.Create(u).Error)
+	}
+	require.NoError(t, db.Create(&model.TwoFA{UserId: twoFAUser.Id, Secret: "secret", IsEnabled: true}).Error)
+	require.NoError(t, db.Create(&model.PasskeyCredential{UserID: passkeyUser.Id, CredentialID: "cred-1", PublicKey: "pk-1"}).Error)
+
+	provider := &oauth.OIDCProvider{}
+
+	newOIDCTestContext := func() *gin.Context {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest(http.MethodGet, "/api/oauth/oidc", nil)
+		return ctx
+	}
+
+	t.Run("verified email binds eligible account", func(t *testing.T) {
+		ctx := newOIDCTestContext()
+		identity := &oauth.OAuthUser{ProviderUserID: "sub-eligible", Email: "ELIGIBLE@Example.com", EmailVerified: true}
+		user, _, err := findOrCreateOAuthUser(ctx, provider, identity, &oauth.OAuthToken{}, "")
+		require.NoError(t, err)
+		assert.Equal(t, eligible.Id, user.Id)
+		assert.Equal(t, "sub-eligible", user.OidcId)
+
+		var stored model.User
+		require.NoError(t, db.First(&stored, eligible.Id).Error)
+		assert.Equal(t, "sub-eligible", stored.OidcId)
+
+		again, _, err := findOrCreateOAuthUser(ctx, provider, identity, &oauth.OAuthToken{}, "")
+		require.NoError(t, err)
+		assert.Equal(t, eligible.Id, again.Id)
+	})
+
+	t.Run("unverified email does not bind", func(t *testing.T) {
+		ctx := newOIDCTestContext()
+		identity := &oauth.OAuthUser{ProviderUserID: "sub-unverified", Email: "unverified@example.com", EmailVerified: false}
+		_, _, err := findOrCreateOAuthUser(ctx, provider, identity, &oauth.OAuthToken{}, "")
+		require.Error(t, err)
+		assert.IsType(t, &OAuthEmailAlreadyTakenError{}, err)
+
+		var stored model.User
+		require.NoError(t, db.First(&stored, unverifiedTarget.Id).Error)
+		assert.Empty(t, stored.OidcId)
+	})
+
+	for _, tc := range []struct {
+		name     string
+		userID   int
+		email    string
+		sub      string
+		wantOidc string
+	}{
+		{"2FA enabled blocks auto-bind", twoFAUser.Id, twoFAUser.Email, "sub-twofa", ""},
+		{"Passkey enabled blocks auto-bind", passkeyUser.Id, passkeyUser.Email, "sub-passkey", ""},
+		{"existing oidc_id blocks overwrite", alreadyBound.Id, alreadyBound.Email, "sub-new", "existing-sub"},
+		{"disabled user blocks auto-bind", disabledUser.Id, disabledUser.Email, "sub-disabled", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := newOIDCTestContext()
+			identity := &oauth.OAuthUser{ProviderUserID: tc.sub, Email: tc.email, EmailVerified: true}
+			_, _, err := findOrCreateOAuthUser(ctx, provider, identity, &oauth.OAuthToken{}, "")
+			require.Error(t, err)
+			assert.IsType(t, &OAuthLegacyBindingNotConfirmedError{}, err)
+
+			var stored model.User
+			require.NoError(t, db.First(&stored, tc.userID).Error)
+			assert.Equal(t, tc.wantOidc, stored.OidcId)
+		})
+	}
+}

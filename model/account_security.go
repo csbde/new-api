@@ -171,3 +171,70 @@ func MigrateLegacyGitHubBindingWithTx(tx *gorm.DB, userID int, legacyID, gitHubI
 	}
 	return result.RowsAffected == 1, nil
 }
+
+// ErrOIDCEmailAutoBindNotEligible indicates an existing account matched by
+// verified OIDC email cannot be auto-bound (e.g. disabled, already bound to
+// another OIDC subject, or protected by 2FA/Passkey).
+var ErrOIDCEmailAutoBindNotEligible = errors.New("oidc email auto-bind is not eligible")
+
+// BindOIDCByVerifiedEmail finds a unique active user matching the verified OIDC
+// email and atomically binds oidcID when the account has no existing OIDC
+// binding and no second factor (2FA or Passkey) enabled.
+func BindOIDCByVerifiedEmail(email, oidcID string) (*User, bool, error) {
+	normalizedEmail := NormalizeEmail(email)
+	if normalizedEmail == "" || oidcID == "" {
+		return nil, false, nil
+	}
+	var matched *User
+	bound := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var users []User
+		if err := lockForUpdate(tx.Where("LOWER(email) = ?", normalizedEmail).Limit(2)).Find(&users).Error; err != nil {
+			return err
+		}
+		switch len(users) {
+		case 0:
+			return nil
+		case 1:
+		default:
+			return ErrEmailAmbiguous
+		}
+		candidate := users[0]
+		if candidate.OidcId == oidcID {
+			matched = &candidate
+			return nil
+		}
+		if candidate.Status != common.UserStatusEnabled || candidate.OidcId != "" {
+			return ErrOIDCEmailAutoBindNotEligible
+		}
+		state, err := getUserVerificationState(tx, candidate.Id, true)
+		if err != nil {
+			return err
+		}
+		if state.HasTwoFA || state.HasPasskey {
+			return ErrOIDCEmailAutoBindNotEligible
+		}
+		var count int64
+		if err := tx.Model(&User{}).Where("oidc_id = ? AND id <> ?", oidcID, candidate.Id).Count(&count).Error; err != nil {
+			return err
+		}
+		if count != 0 {
+			return ErrExternalIdentityAlreadyClaimed
+		}
+		result := tx.Model(&User{}).Where("id = ? AND oidc_id = ?", candidate.Id, "").Update("oidc_id", oidcID)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrAccountBindingChanged
+		}
+		candidate.OidcId = oidcID
+		matched = &candidate
+		bound = true
+		return nil
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return matched, bound, nil
+}

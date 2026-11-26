@@ -451,7 +451,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 				matched = slices.ContainsFunc(emails, func(email string) bool { return model.NormalizeEmail(email) == accountEmail })
 			}
 			if !matched {
-				recordLegacyGitHubBindingAudit(c, user, false, map[string]any{"legacy_id": legacyID, "provider_user_id": oauthUser.ProviderUserID, "reason": reason})
+				recordOAuthAutoBindingAudit(c, user, "github", false, map[string]any{"legacy_migration": true, "legacy_id": legacyID, "provider_user_id": oauthUser.ProviderUserID, "reason": reason})
 				return nil, nil, &OAuthLegacyBindingNotConfirmedError{}
 			}
 			written := false
@@ -466,12 +466,37 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 			if written {
 				user.GitHubId = oauthUser.ProviderUserID
 				notificationFailed := service.NotifyAccountSecurityChange(service.AccountMailLanguage(c, user.Id), user.Email, i18n.MsgSecurityEventLoginLinked, map[string]any{"Provider": provider.GetName()}) != nil
-				recordLegacyGitHubBindingAudit(c, user, true, map[string]any{
-					"legacy_id": legacyID, "provider_user_id": oauthUser.ProviderUserID,
+				recordOAuthAutoBindingAudit(c, user, "github", true, map[string]any{
+					"legacy_migration": true, "legacy_id": legacyID, "provider_user_id": oauthUser.ProviderUserID,
 					"verified_email_matched": true, "notification_failed": notificationFailed,
 				})
 			}
 			return user, nil, nil
+		}
+	}
+
+	// For OIDC login with a provider-verified email, bind to a matching local
+	// account that has no OIDC binding and no 2FA/Passkey enabled.
+	if provider.ProviderUserIDColumn() == "oidc_id" && oauthUser.EmailVerified && oauthUser.Email != "" {
+		boundUser, boundNow, err := model.BindOIDCByVerifiedEmail(oauthUser.Email, oauthUser.ProviderUserID)
+		if err != nil {
+			if errors.Is(err, model.ErrEmailAmbiguous) {
+				return nil, nil, &OAuthEmailAlreadyTakenError{}
+			}
+			if errors.Is(err, model.ErrOIDCEmailAutoBindNotEligible) || errors.Is(err, model.ErrExternalIdentityAlreadyClaimed) {
+				return nil, nil, &OAuthLegacyBindingNotConfirmedError{}
+			}
+			return nil, nil, err
+		}
+		if boundUser != nil {
+			if boundNow {
+				notificationFailed := service.NotifyAccountSecurityChange(service.AccountMailLanguage(c, boundUser.Id), boundUser.Email, i18n.MsgSecurityEventLoginLinked, map[string]any{"Provider": provider.GetName()}) != nil
+				recordOAuthAutoBindingAudit(c, boundUser, "oidc", true, map[string]any{
+					"provider_user_id":       oauthUser.ProviderUserID,
+					"verified_email_matched": true, "notification_failed": notificationFailed,
+				})
+			}
+			return boundUser, nil, nil
 		}
 	}
 
@@ -579,11 +604,11 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	return user, nil, nil
 }
 
-// recordLegacyGitHubBindingAudit records the outcome of a legacy GitHub binding
-// rewrite as an account binding event. No session exists yet on the login path,
-// so the row carries the user's own role instead of the request context.
-func recordLegacyGitHubBindingAudit(c *gin.Context, user *model.User, success bool, params map[string]any) {
-	params["provider"], params["legacy_migration"], params["success"] = "github", true, success
+// recordOAuthAutoBindingAudit records the outcome of an automatic OAuth account
+// binding event. No session exists yet on the login path, so the row carries
+// the user's own role instead of the request context.
+func recordOAuthAutoBindingAudit(c *gin.Context, user *model.User, provider string, success bool, params map[string]any) {
+	params["provider"], params["success"] = provider, success
 	model.RecordOperationAuditLog(user.Id, user.Role, auditContentEN("user.binding_bind", params), c.ClientIP(), "user.binding_bind", params, nil, &model.AuditRequestInfo{
 		Method: c.Request.Method, Route: c.FullPath(), Path: c.FullPath(), Status: c.Writer.Status(), Success: success,
 	}, c)
