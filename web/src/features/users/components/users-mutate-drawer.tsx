@@ -424,33 +424,36 @@ export function UsersMutateDrawer({
                 />
               </SideDrawerSection>
 
-              {/* Group & Quota Settings (Update only) */}
+              <SideDrawerSection>
+                <h3 className='text-sm font-medium'>{t('Group')}</h3>
+                <FormField
+                  control={form.control}
+                  name='group'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Group')}</FormLabel>
+                      <FormControl>
+                        <Combobox
+                          options={groups.map((group) => ({
+                            value: group,
+                            label: group,
+                          }))}
+                          onValueChange={field.onChange}
+                          value={field.value}
+                          className='w-full'
+                          placeholder={t('Select a group')}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </SideDrawerSection>
+
+              {/* Quota & Remark Settings (Update only) */}
               {isUpdate && (
                 <SideDrawerSection>
                   <h3 className='text-sm font-medium'>{t('Group & Quota')}</h3>
-
-                  <FormField
-                    control={form.control}
-                    name='group'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Group')}</FormLabel>
-                        <FormControl>
-                          <Combobox
-                            options={groups.map((group) => ({
-                              value: group,
-                              label: group,
-                            }))}
-                            onValueChange={field.onChange}
-                            value={field.value}
-                            className='w-full'
-                            placeholder={t('Select a group')}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
 
                   <FormField
                     control={form.control}

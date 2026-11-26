@@ -54,6 +54,7 @@ import {
 
 const sectionCardClassName = 'min-w-0 shadow-none'
 const sectionHeaderClassName = 'gap-2 border-b'
+const EXCLUSIVE_USABLE_GROUP_KEY = '*:exclusive'
 
 type Rule = {
   _id: string
@@ -94,11 +95,25 @@ function safeParseJson(str: string): Record<string, Record<string, string>> {
   }
 }
 
+function extractExclusiveGroups(
+  nested: Record<string, Record<string, string>>
+): Set<string> {
+  const exclusive = new Set<string>()
+  for (const [userGroup, inner] of Object.entries(nested)) {
+    if (typeof inner !== 'object' || inner === null) continue
+    if (Object.hasOwn(inner, EXCLUSIVE_USABLE_GROUP_KEY)) {
+      exclusive.add(userGroup)
+    }
+  }
+  return exclusive
+}
+
 function flattenRules(nested: Record<string, Record<string, string>>): Rule[] {
   const rules: Rule[] = []
   for (const [userGroup, inner] of Object.entries(nested)) {
     if (typeof inner !== 'object' || inner === null) continue
     for (const [rawKey, desc] of Object.entries(inner)) {
+      if (rawKey === EXCLUSIVE_USABLE_GROUP_KEY) continue
       const { visible, groupName } = parseRawKey(rawKey)
       let description = ''
       if (!visible) {
@@ -118,8 +133,15 @@ function flattenRules(nested: Record<string, Record<string, string>>): Rule[] {
   return rules
 }
 
-function serializeRules(rules: Rule[]): string {
+function serializeRules(
+  rules: Rule[],
+  exclusiveGroups: ReadonlySet<string>
+): string {
   const result: Record<string, Record<string, string>> = {}
+  for (const userGroup of exclusiveGroups) {
+    if (!userGroup) continue
+    result[userGroup] = { [EXCLUSIVE_USABLE_GROUP_KEY]: '1' }
+  }
   for (const { userGroup, visible, targetGroup, description } of rules) {
     if (!userGroup || !targetGroup) continue
     if (!result[userGroup]) result[userGroup] = {}
@@ -128,6 +150,30 @@ function serializeRules(rules: Rule[]): string {
   return Object.keys(result).length === 0
     ? '{}'
     : JSON.stringify(result, null, 2)
+}
+
+function computeEffectiveGroups(
+  userGroup: string,
+  exclusive: boolean,
+  items: Rule[],
+  globalUsableGroups: string[]
+): string[] {
+  const visibleSet = new Set<string>(exclusive ? [] : globalUsableGroups)
+  let explicitlyRemovedSelf = false
+  for (const rule of items) {
+    if (!rule.targetGroup) continue
+    if (rule.visible) {
+      visibleSet.add(rule.targetGroup)
+      if (rule.targetGroup === userGroup) explicitlyRemovedSelf = false
+    } else {
+      visibleSet.delete(rule.targetGroup)
+      if (rule.targetGroup === userGroup) explicitlyRemovedSelf = true
+    }
+  }
+  if (userGroup && !explicitlyRemovedSelf) {
+    visibleSet.add(userGroup)
+  }
+  return [...visibleSet]
 }
 
 type GroupSelectProps = {
@@ -163,13 +209,17 @@ function GroupSelect(props: GroupSelectProps) {
 type GroupSpecialUsableRulesEditorProps = {
   value: string
   groupOptions: string[]
+  userUsableGroups?: string
   onChange: (value: string) => void
 }
 
 type GroupSectionProps = {
   groupName: string
   items: Rule[]
+  exclusive: boolean
+  globalUsableGroups: string[]
   groupOptions: string[]
+  onToggleExclusive: (groupName: string, exclusive: boolean) => void
   onUpdate: (id: string, field: keyof Rule, val: string | boolean) => void
   onRemove: (id: string) => void
   onAdd: (groupName: string) => void
@@ -180,6 +230,16 @@ function GroupSection(props: GroupSectionProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(true)
   const isKnownGroup = props.groupOptions.includes(props.groupName)
+  const effectiveGroups = useMemo(
+    () =>
+      computeEffectiveGroups(
+        props.groupName,
+        props.exclusive,
+        props.items,
+        props.globalUsableGroups
+      ),
+    [props.groupName, props.exclusive, props.items, props.globalUsableGroups]
+  )
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
@@ -237,7 +297,42 @@ function GroupSection(props: GroupSectionProps) {
           </div>
         </div>
         <CollapsibleContent>
-          <div className='space-y-2 border-t p-3'>
+          <div className='space-y-3 border-t p-3'>
+            <div className='bg-muted/40 flex flex-wrap items-center justify-between gap-2 rounded-md px-2.5 py-2'>
+              <span className='text-muted-foreground text-xs font-medium'>
+                {t('Visibility mode')}
+              </span>
+              <Select
+                value={props.exclusive ? 'exclusive' : 'inherit'}
+                onValueChange={(v) =>
+                  v !== null &&
+                  props.onToggleExclusive(props.groupName, v === 'exclusive')
+                }
+              >
+                <SelectTrigger
+                  className='h-8 w-full sm:w-64'
+                  aria-label={t('Visibility mode for {{group}}', {
+                    group: props.groupName,
+                  })}
+                >
+                  <SelectValue>
+                    {props.exclusive
+                      ? t('Whitelist only (own group + rules)')
+                      : t('Inherit global + rules')}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    <SelectItem value='inherit'>
+                      {t('Inherit global + rules')}
+                    </SelectItem>
+                    <SelectItem value='exclusive'>
+                      {t('Whitelist only (own group + rules)')}
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
             {props.items.map((rule) => (
               <div
                 key={rule._id}
@@ -325,6 +420,25 @@ function GroupSection(props: GroupSectionProps) {
                 </Button>
               </div>
             ))}
+            <div className='flex flex-wrap items-center gap-1.5 border-t pt-2.5'>
+              <span className='text-muted-foreground text-xs'>
+                {t('Effective visible groups')}:
+              </span>
+              {effectiveGroups.length === 0 ? (
+                <span className='text-muted-foreground text-xs'>
+                  {t('None')}
+                </span>
+              ) : (
+                effectiveGroups.map((group) => (
+                  <StatusBadge
+                    key={group}
+                    label={group}
+                    variant='neutral'
+                    copyable={false}
+                  />
+                ))
+              )}
+            </div>
           </div>
         </CollapsibleContent>
       </div>
@@ -339,14 +453,44 @@ export function GroupSpecialUsableRulesEditor(
   const [rules, setRules] = useState<Rule[]>(() =>
     flattenRules(safeParseJson(props.value))
   )
+  const [exclusiveGroups, setExclusiveGroups] = useState<Set<string>>(() =>
+    extractExclusiveGroups(safeParseJson(props.value))
+  )
+
+  const globalUsableGroups = useMemo(() => {
+    if (!props.userUsableGroups) return []
+    try {
+      const parsed = JSON.parse(props.userUsableGroups) as unknown
+      if (typeof parsed === 'object' && parsed !== null) {
+        return Object.keys(parsed)
+      }
+    } catch {
+      /* ignore invalid JSON */
+    }
+    return []
+  }, [props.userUsableGroups])
 
   const { onChange } = props
   const emitChange = useCallback(
-    (newRules: Rule[]) => {
+    (newRules: Rule[], nextExclusive: Set<string> = exclusiveGroups) => {
       setRules(newRules)
-      onChange(serializeRules(newRules))
+      setExclusiveGroups(nextExclusive)
+      onChange(serializeRules(newRules, nextExclusive))
     },
-    [onChange]
+    [onChange, exclusiveGroups]
+  )
+
+  const toggleExclusive = useCallback(
+    (groupName: string, exclusive: boolean) => {
+      const next = new Set(exclusiveGroups)
+      if (exclusive) {
+        next.add(groupName)
+      } else {
+        next.delete(groupName)
+      }
+      emitChange(rules, next)
+    },
+    [exclusiveGroups, rules, emitChange]
   )
 
   const updateRule = useCallback(
@@ -373,9 +517,15 @@ export function GroupSpecialUsableRulesEditor(
   )
 
   const removeGroup = useCallback(
-    (groupName: string) =>
-      emitChange(rules.filter((r) => r.userGroup !== groupName)),
-    [rules, emitChange]
+    (groupName: string) => {
+      const next = new Set(exclusiveGroups)
+      next.delete(groupName)
+      emitChange(
+        rules.filter((r) => r.userGroup !== groupName),
+        next
+      )
+    },
+    [rules, exclusiveGroups, emitChange]
   )
 
   const addRuleToGroup = useCallback(
@@ -397,6 +547,11 @@ export function GroupSpecialUsableRulesEditor(
   const grouped = useMemo(() => {
     const map: Record<string, Rule[]> = {}
     const order: string[] = []
+    for (const groupName of exclusiveGroups) {
+      if (!groupName) continue
+      map[groupName] = []
+      order.push(groupName)
+    }
     for (const r of rules) {
       if (!r.userGroup) continue
       if (!map[r.userGroup]) {
@@ -406,7 +561,7 @@ export function GroupSpecialUsableRulesEditor(
       map[r.userGroup].push(r)
     }
     return order.map((name) => ({ name, items: map[name] }))
-  }, [rules])
+  }, [rules, exclusiveGroups])
 
   const newGroupCandidates = useMemo(() => {
     const used = new Set(grouped.map((g) => g.name))
@@ -436,7 +591,10 @@ export function GroupSpecialUsableRulesEditor(
                 key={group.name}
                 groupName={group.name}
                 items={group.items}
+                exclusive={exclusiveGroups.has(group.name)}
+                globalUsableGroups={globalUsableGroups}
                 groupOptions={props.groupOptions}
+                onToggleExclusive={toggleExclusive}
                 onUpdate={updateRule}
                 onRemove={removeRule}
                 onAdd={addRuleToGroup}

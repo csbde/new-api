@@ -385,6 +385,7 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
         <GroupSpecialUsableRulesEditor
           value={groupSpecialUsableGroup}
           groupOptions={registryNames}
+          userUsableGroups={userUsableGroups}
           onChange={(value) => onChange('GroupSpecialUsableGroup', value)}
         />
       </TabsContent>

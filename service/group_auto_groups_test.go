@@ -60,6 +60,35 @@ func TestGetRequestAutoGroupsFiltersBeforeApplyingCurrentLimit(t *testing.T) {
 	assert.Equal(t, []string{"vip"}, GetRequestAutoGroups(ctx, "default"))
 }
 
+func TestGetUserUsableGroupsExclusiveWhitelist(t *testing.T) {
+	configureRequestAutoGroupsTest(t)
+	specialGroups := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup
+	originalSpecial := specialGroups.ReadAll()
+	t.Cleanup(func() {
+		specialGroups.Clear()
+		specialGroups.AddAll(originalSpecial)
+	})
+
+	specialGroups.Clear()
+	specialGroups.Set("A", map[string]string{
+		ExclusiveUsableGroupKey: "1",
+		"+:B":                   "Group B",
+		"+:C":                   "Group C",
+	})
+
+	usableA := GetUserUsableGroups("A")
+	assert.Equal(t, map[string]string{
+		"A": "User group",
+		"B": "Group B",
+		"C": "Group C",
+	}, usableA)
+
+	usableDefault := GetUserUsableGroups("default")
+	assert.Contains(t, usableDefault, "default")
+	assert.Contains(t, usableDefault, "vip")
+	assert.Contains(t, usableDefault, "svip")
+}
+
 func TestGetRequestAutoGroupsDoesNotFallBackAfterPermissionChange(t *testing.T) {
 	configureRequestAutoGroupsTest(t)
 	ctx := newRequestAutoGroupsContext()

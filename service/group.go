@@ -11,27 +11,45 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const ExclusiveUsableGroupKey = "*:exclusive"
+
 func GetUserUsableGroups(userGroup string) map[string]string {
-	groupsCopy := setting.GetUserUsableGroupsCopy()
+	var groupsCopy map[string]string
+	exclusive := false
 	if userGroup != "" {
-		specialSettings, b := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Get(userGroup)
-		if b {
+		if specialSettings, ok := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Get(userGroup); ok {
+			_, exclusive = specialSettings[ExclusiveUsableGroupKey]
+			if exclusive {
+				groupsCopy = make(map[string]string)
+			} else {
+				groupsCopy = setting.GetUserUsableGroupsCopy()
+			}
 			// 处理特殊可用分组
 			for specialGroup, desc := range specialSettings {
+				if specialGroup == ExclusiveUsableGroupKey {
+					continue
+				}
 				if after, ok := strings.CutPrefix(specialGroup, "-:"); ok {
 					// 移除分组
-					groupToRemove := after
-					delete(groupsCopy, groupToRemove)
+					delete(groupsCopy, after)
 				} else if after, ok := strings.CutPrefix(specialGroup, "+:"); ok {
 					// 添加分组
-					groupToAdd := after
-					groupsCopy[groupToAdd] = desc
+					groupsCopy[after] = desc
 				} else {
 					// 直接添加分组
 					groupsCopy[specialGroup] = desc
 				}
 			}
+			if _, ok := groupsCopy[userGroup]; !ok {
+				if _, explicitlyRemoved := specialSettings["-:"+userGroup]; !explicitlyRemoved {
+					groupsCopy[userGroup] = "User group"
+				}
+			}
+			return groupsCopy
 		}
+	}
+	groupsCopy = setting.GetUserUsableGroupsCopy()
+	if userGroup != "" {
 		// 如果userGroup不在UserUsableGroups中，返回UserUsableGroups + userGroup。
 		// 描述是英文源文本，由 web 控制台翻译；管理员配置的描述原样显示。
 		if _, ok := groupsCopy[userGroup]; !ok {

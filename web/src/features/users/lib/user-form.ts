@@ -27,7 +27,7 @@ import { quotaUnitsToDollars } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
 
 import { DEFAULT_GROUP } from '../constants'
-import { type UserFormData, type User } from '../types'
+import type { UserFormData, User } from '../types'
 
 // ============================================================================
 // Form Schema
@@ -94,9 +94,10 @@ export function transformFormDataToPayload(
     )
   }
 
-  // For create: only send required fields
+  // For create: send required fields and initial user group
   if (userId === undefined) {
     payload.role = role
+    payload.group = data.group || DEFAULT_GROUP
   } else {
     // For update: quota is adjusted atomically via /api/user/manage, not sent here
     payload.group = data.group
