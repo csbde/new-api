@@ -508,13 +508,22 @@ export function BalanceCell({ channel }: { channel: Channel }) {
     try {
       const response = await updateChannelBalance(channel.id)
       if (response.success && response.balance !== undefined) {
+        const usageWindow = response.balance_detail?.windows?.[0]
+        const summaryText =
+          response.balance_detail?.amount == null && usageWindow
+            ? formatChannelBalanceAmount(
+                usageWindow.used,
+                usageWindow.unit || response.balance_detail?.currency,
+                { digitsLarge: 2, digitsSmall: 4, abbreviate: false, locale }
+              )
+            : formatChannelBalanceSummary(
+                response.balance_detail,
+                response.balance,
+                { digitsLarge: 2, digitsSmall: 4, abbreviate: false, locale }
+              )
         toast.success(
           t('Balance updated: {{balance}}', {
-            balance: formatChannelBalanceSummary(
-              response.balance_detail,
-              response.balance,
-              { digitsLarge: 2, digitsSmall: 4, abbreviate: false, locale }
-            ),
+            balance: summaryText,
           })
         )
         void queryClient.invalidateQueries({
@@ -595,12 +604,15 @@ export function BalanceCell({ channel }: { channel: Channel }) {
   const usageTooltipLabel = sensitiveVisible
     ? `${t('Used:')} ${upstreamUsedDisplay ?? usedFull}`
     : maskedUsedLabel
-  let leftBadgeLabel = sensitiveVisible ? usedDisplay : SENSITIVE_MASK
-  let leftTooltipLabel = sensitiveVisible ? usedLabel : maskedUsedLabel
+  let leftBadgeLabel = sensitiveVisible
+    ? (upstreamUsedDisplay ?? usedDisplay)
+    : SENSITIVE_MASK
   if (usageOnly) {
     leftBadgeLabel = usageBadgeLabel
-    leftTooltipLabel = usageTooltipLabel
   }
+  const leftTooltipLabel = sensitiveVisible
+    ? `${t('Used:')} ${upstreamUsedDisplay ?? usedFull}`
+    : maskedUsedLabel
 
   return (
     <TooltipProvider>

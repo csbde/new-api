@@ -747,7 +747,18 @@ func fetchCustomBalanceBody(channel *model.Channel, method, targetURL string) ([
 	return body, nil
 }
 
-func fetchCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQueryConfig) (channelBalanceResult, error) {
+type customBalanceQueryTrace struct {
+	BalanceURL   string
+	UsageURL     string
+	BalanceBody  []byte
+	UsageBody    []byte
+	BalanceValue *float64
+	UsageValue   *float64
+	Currency     string
+	Result       channelBalanceResult
+}
+
+func executeCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQueryConfig) (customBalanceQueryTrace, error) {
 	now := time.Now()
 	startDate := fmt.Sprintf("%s-01", now.Format("2006-01"))
 	endDate := now.Format("2006-01-02")
@@ -758,13 +769,30 @@ func fetchCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQuer
 		balanceURL = resolveBalanceQueryURL(channel, "/v1/dashboard/billing/credit_grants", startDate, endDate)
 	}
 
+	trace := customBalanceQueryTrace{
+		BalanceURL: balanceURL,
+		UsageURL:   usageURL,
+	}
+
 	var balanceBody []byte
 	var err error
 	if balanceURL != "" {
 		balanceBody, err = fetchCustomBalanceBody(channel, cfg.Method, balanceURL)
 		if err != nil {
-			return channelBalanceResult{}, err
+			return trace, err
 		}
+		trace.BalanceBody = balanceBody
+	}
+
+	var usageBody []byte
+	if usageURL != "" && usageURL != balanceURL {
+		usageBody, err = fetchCustomBalanceBody(channel, cfg.Method, usageURL)
+		if err != nil {
+			return trace, err
+		}
+		trace.UsageBody = usageBody
+	} else {
+		usageBody = balanceBody
 	}
 
 	balanceField := strings.TrimSpace(cfg.BalanceField)
@@ -772,11 +800,20 @@ func fetchCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQuer
 	usageField := strings.TrimSpace(cfg.UsageField)
 
 	if balanceField == "" && totalField == "" && usageField == "" {
-		formatted, err := common.IndentJson(balanceBody)
-		if err != nil {
-			return channelBalanceResult{}, fmt.Errorf("invalid balance JSON response: %w", err)
+		if len(balanceBody) > 0 {
+			formatted, fmtErr := common.IndentJson(balanceBody)
+			if fmtErr != nil {
+				return trace, fmt.Errorf("invalid balance JSON response: %w", fmtErr)
+			}
+			trace.Result = channelBalanceResult{RawResponse: string(formatted)}
+			return trace, nil
 		}
-		return channelBalanceResult{RawResponse: string(formatted)}, nil
+		formatted, fmtErr := common.IndentJson(usageBody)
+		if fmtErr != nil {
+			return trace, fmt.Errorf("invalid usage JSON response: %w", fmtErr)
+		}
+		trace.Result = channelBalanceResult{RawResponse: string(formatted)}
+		return trace, nil
 	}
 
 	balanceDivisor := cfg.BalanceDivisor
@@ -791,6 +828,7 @@ func fetchCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQuer
 	if currency == "" {
 		currency = "USD"
 	}
+	trace.Currency = currency
 
 	var hasAmount bool
 	var rawAmount float64
@@ -798,39 +836,48 @@ func fetchCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQuer
 
 	if balanceField != "" {
 		source := balanceBody
-		if len(source) == 0 && usageURL != "" {
-			source, err = fetchCustomBalanceBody(channel, cfg.Method, usageURL)
-			if err != nil {
-				return channelBalanceResult{}, err
-			}
+		if len(source) == 0 {
+			source = usageBody
 		}
 		val, err := extractJSONNumberByPath(source, balanceField)
 		if err != nil {
-			return channelBalanceResult{}, err
+			return trace, err
 		}
 		rawAmount = val / balanceDivisor
 		hasAmount = true
+		balCopy := rawAmount
+		trace.BalanceValue = &balCopy
+
+		if usageField != "" {
+			used, err := extractJSONNumberByPath(usageBody, usageField)
+			if err != nil {
+				return trace, err
+			}
+			usedVal := used / usageDivisor
+			usedCopy := usedVal
+			trace.UsageValue = &usedCopy
+			windows = append(windows, jsplugin.BalanceWindow{
+				Name: jsplugin.LocalizedText{"en": "Usage", "zh": "用量"},
+				Used: usedVal,
+				Unit: currency,
+			})
+		}
 	} else if totalField != "" {
 		total, err := extractJSONNumberByPath(balanceBody, totalField)
 		if err != nil {
-			return channelBalanceResult{}, err
+			return trace, err
 		}
 		totalVal := total / balanceDivisor
 		rawAmount = totalVal
 		hasAmount = true
 		if usageField != "" {
-			usageBody := balanceBody
-			if usageURL != "" && usageURL != balanceURL {
-				usageBody, err = fetchCustomBalanceBody(channel, cfg.Method, usageURL)
-				if err != nil {
-					return channelBalanceResult{}, err
-				}
-			}
 			used, err := extractJSONNumberByPath(usageBody, usageField)
 			if err != nil {
-				return channelBalanceResult{}, err
+				return trace, err
 			}
 			usedVal := used / usageDivisor
+			usedCopy := usedVal
+			trace.UsageValue = &usedCopy
 			rawAmount = totalVal - usedVal
 			windows = append(windows, jsplugin.BalanceWindow{
 				Name:  jsplugin.LocalizedText{"en": "Usage", "zh": "用量"},
@@ -839,19 +886,16 @@ func fetchCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQuer
 				Unit:  currency,
 			})
 		}
+		balCopy := rawAmount
+		trace.BalanceValue = &balCopy
 	} else if usageField != "" {
-		usageBody := balanceBody
-		if len(usageBody) == 0 || (usageURL != "" && usageURL != balanceURL) {
-			usageBody, err = fetchCustomBalanceBody(channel, cfg.Method, usageURL)
-			if err != nil {
-				return channelBalanceResult{}, err
-			}
-		}
 		used, err := extractJSONNumberByPath(usageBody, usageField)
 		if err != nil {
-			return channelBalanceResult{}, err
+			return trace, err
 		}
 		usedVal := used / usageDivisor
+		usedCopy := usedVal
+		trace.UsageValue = &usedCopy
 		windows = append(windows, jsplugin.BalanceWindow{
 			Name: jsplugin.LocalizedText{"en": "Usage", "zh": "用量"},
 			Used: usedVal,
@@ -860,14 +904,15 @@ func fetchCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQuer
 	}
 
 	if !hasAmount {
-		return channelBalanceResult{
+		trace.Result = channelBalanceResult{
 			Detail: &model.ChannelBalanceDetail{
 				BalanceResult: jsplugin.BalanceResult{
 					Currency: currency,
 					Windows:  windows,
 				},
 			},
-		}, nil
+		}
+		return trace, nil
 	}
 
 	amountCopy := rawAmount
@@ -880,15 +925,128 @@ func fetchCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQuer
 	if currency == "CNY" {
 		rate := operation_setting.USDExchangeRate
 		if rate <= 0 || math.IsNaN(rate) || math.IsInf(rate, 0) {
-			return channelBalanceResult{}, errors.New("USD exchange rate must be greater than zero")
+			return trace, errors.New("USD exchange rate must be greater than zero")
 		}
 		usd = rawAmount / rate
 	}
 	channel.UpdateBalance(usd)
-	return channelBalanceResult{
+	trace.Result = channelBalanceResult{
 		Balance: usd,
 		Detail:  &model.ChannelBalanceDetail{BalanceResult: balanceResult},
-	}, nil
+	}
+	return trace, nil
+}
+
+func fetchCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQueryConfig) (channelBalanceResult, error) {
+	trace, err := executeCustomBalanceQuery(channel, cfg)
+	if err != nil {
+		return channelBalanceResult{}, err
+	}
+	return trace.Result, nil
+}
+
+type testBalanceQueryRequest struct {
+	ChannelID      int                           `json:"channel_id"`
+	Type           int                           `json:"type"`
+	BaseURL        string                        `json:"base_url"`
+	Key            string                        `json:"key"`
+	Setting        string                        `json:"setting"`
+	HeaderOverride string                        `json:"header_override"`
+	BalanceQuery   dto.ChannelBalanceQueryConfig `json:"balance_query"`
+}
+
+func formatTestQueryBody(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+	if formatted, err := common.IndentJson(body); err == nil {
+		return string(formatted)
+	}
+	return string(body)
+}
+
+func TestBalanceQuery(c *gin.Context) {
+	var req testBalanceQueryRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	key := ""
+	for line := range strings.SplitSeq(req.Key, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			key = trimmed
+			break
+		}
+	}
+
+	baseURL := strings.TrimSpace(req.BaseURL)
+	setting := req.Setting
+	headerOverride := req.HeaderOverride
+	channelType := req.Type
+
+	if req.ChannelID > 0 {
+		stored, err := model.CacheGetChannel(req.ChannelID)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if key == "" {
+			if keys := stored.GetKeys(); len(keys) > 0 {
+				key = strings.TrimSpace(keys[0])
+			} else {
+				key = strings.TrimSpace(stored.Key)
+			}
+		}
+		if baseURL == "" {
+			baseURL = stored.GetBaseURL()
+		}
+		if channelType == 0 {
+			channelType = stored.Type
+		}
+		if strings.TrimSpace(setting) == "" && stored.Setting != nil {
+			setting = *stored.Setting
+		}
+		if strings.TrimSpace(headerOverride) == "" && stored.HeaderOverride != nil {
+			headerOverride = *stored.HeaderOverride
+		}
+	}
+
+	tempChannel := &model.Channel{
+		Id:             0,
+		Type:           channelType,
+		BaseURL:        &baseURL,
+		Key:            key,
+		Setting:        &setting,
+		HeaderOverride: &headerOverride,
+	}
+
+	trace, err := executeCustomBalanceQuery(tempChannel, &req.BalanceQuery)
+	if err != nil && len(trace.BalanceBody) == 0 && len(trace.UsageBody) == 0 {
+		common.ApiError(c, err)
+		return
+	}
+
+	parseError := ""
+	if err != nil {
+		parseError = err.Error()
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"balance_url": trace.BalanceURL,
+			"usage_url":   trace.UsageURL,
+			"balance_raw": formatTestQueryBody(trace.BalanceBody),
+			"usage_raw":   formatTestQueryBody(trace.UsageBody),
+			"balance":     trace.BalanceValue,
+			"usage":       trace.UsageValue,
+			"currency":    trace.Currency,
+			"parse_error": parseError,
+		},
+	})
 }
 
 func querySingleBuiltinChannelBalance(channel *model.Channel) (channelBalanceResult, error) {

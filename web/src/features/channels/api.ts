@@ -356,6 +356,48 @@ export async function updateChannelBalance(
   return res.data
 }
 
+export type TestBalanceQueryRequest = {
+  channel_id?: number
+  type: number
+  base_url: string
+  key: string
+  setting: string
+  header_override: string
+  balance_query: {
+    method?: string
+    balance_url?: string
+    usage_url?: string
+    balance_field?: string
+    total_field?: string
+    usage_field?: string
+    balance_divisor?: number
+    usage_divisor?: number
+    currency?: string
+  }
+}
+
+export type TestBalanceQueryResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    balance_url?: string
+    usage_url?: string
+    balance_raw?: string
+    usage_raw?: string
+    balance?: number | null
+    usage?: number | null
+    currency?: string
+    parse_error?: string
+  }
+}
+
+export async function testChannelBalanceQuery(
+  payload: TestBalanceQueryRequest
+): Promise<TestBalanceQueryResponse> {
+  const res = await api.post('/api/channel/test_balance_query', payload)
+  return res.data
+}
+
 /**
  * Fetch available models from upstream provider
  */

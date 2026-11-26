@@ -139,6 +139,8 @@ import {
   getPrefillGroups,
   getTaskPluginOptions,
   refreshCodexCredential,
+  testChannelBalanceQuery,
+  type TestBalanceQueryResponse,
 } from '../../api'
 import {
   ADD_MODE_OPTIONS,
@@ -574,6 +576,52 @@ export function ChannelMutateDrawer({
   const loadedForm = useRef<{ channelId: number; snapshot: string } | null>(
     null
   )
+  const [isTestingBalanceQuery, setIsTestingBalanceQuery] = useState(false)
+  const [balanceQueryTestResult, setBalanceQueryTestResult] = useState<
+    TestBalanceQueryResponse['data'] | null
+  >(null)
+
+  const handleTestBalanceQuery = async () => {
+    const values = form.getValues()
+    setIsTestingBalanceQuery(true)
+    try {
+      const balanceDivisor = Number(values.balance_query_balance_divisor || '')
+      const usageDivisor = Number(values.balance_query_usage_divisor || '')
+      const res = await testChannelBalanceQuery({
+        channel_id: isEditing && channelId ? channelId : undefined,
+        type: values.type,
+        base_url: values.base_url || '',
+        key: values.key || '',
+        setting: values.setting || '',
+        header_override: values.header_override || '',
+        balance_query: {
+          method: values.balance_query_method || 'GET',
+          balance_url: values.balance_query_url || '',
+          usage_url: values.balance_query_usage_url || '',
+          balance_field: values.balance_query_balance_field || '',
+          total_field: values.balance_query_total_field || '',
+          usage_field: values.balance_query_usage_field || '',
+          balance_divisor:
+            Number.isFinite(balanceDivisor) && balanceDivisor > 0
+              ? balanceDivisor
+              : undefined,
+          usage_divisor:
+            Number.isFinite(usageDivisor) && usageDivisor > 0
+              ? usageDivisor
+              : undefined,
+          currency: values.balance_query_currency || 'USD',
+        },
+      })
+      if (!res.success) {
+        throw createServerError(res, t('Failed to query balance'))
+      }
+      setBalanceQueryTestResult(res.data ?? null)
+    } catch (error: unknown) {
+      handleServerError(error, t('Failed to query balance'))
+    } finally {
+      setIsTestingBalanceQuery(false)
+    }
+  }
 
   const { data: defaultBaseURLs } = useQuery({
     queryKey: channelsQueryKeys.defaultBaseURLs(),
@@ -3067,15 +3115,26 @@ export function ChannelMutateDrawer({
         />
 
         <div className='space-y-3 border-t pt-4'>
-          <div className='space-y-1'>
-            <h4 className='text-sm font-medium'>
-              {t('Balance & Usage Query Override')}
-            </h4>
-            <p className='text-muted-foreground text-xs'>
-              {t(
-                'Override balance/usage query endpoints and JSON response field mappings for this channel.'
-              )}
-            </p>
+          <div className='flex flex-wrap items-start justify-between gap-2'>
+            <div className='space-y-1'>
+              <h4 className='text-sm font-medium'>
+                {t('Balance & Usage Query Override')}
+              </h4>
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Override balance/usage query endpoints and JSON response field mappings for this channel.'
+                )}
+              </p>
+            </div>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              disabled={isTestingBalanceQuery}
+              onClick={handleTestBalanceQuery}
+            >
+              {isTestingBalanceQuery ? t('Testing...') : t('Test Query')}
+            </Button>
           </div>
           <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
             <FormField
@@ -3249,6 +3308,60 @@ export function ChannelMutateDrawer({
               )}
             />
           </div>
+          {balanceQueryTestResult && (
+            <div className='bg-muted/40 space-y-2 rounded-lg border p-3 text-xs'>
+              {(balanceQueryTestResult.balance != null ||
+                balanceQueryTestResult.usage != null ||
+                balanceQueryTestResult.parse_error) && (
+                <div className='flex flex-wrap items-center gap-3'>
+                  <span className='font-medium'>{t('Mapped Result')}:</span>
+                  {balanceQueryTestResult.balance != null && (
+                    <span>
+                      {t('Balance')}: {balanceQueryTestResult.balance}{' '}
+                      {balanceQueryTestResult.currency || 'USD'}
+                    </span>
+                  )}
+                  {balanceQueryTestResult.usage != null && (
+                    <span>
+                      {t('Usage')}: {balanceQueryTestResult.usage}{' '}
+                      {balanceQueryTestResult.currency || 'USD'}
+                    </span>
+                  )}
+                  {balanceQueryTestResult.parse_error && (
+                    <span className='text-destructive'>
+                      {t('Parse Error')}: {balanceQueryTestResult.parse_error}
+                    </span>
+                  )}
+                </div>
+              )}
+              {balanceQueryTestResult.balance_raw && (
+                <div className='space-y-1'>
+                  <div className='text-muted-foreground font-medium'>
+                    {t('Balance Response')}{' '}
+                    {balanceQueryTestResult.balance_url
+                      ? `(${balanceQueryTestResult.balance_url})`
+                      : ''}
+                  </div>
+                  <pre className='bg-background max-h-48 overflow-auto rounded border p-2 font-mono text-[11px]'>
+                    {balanceQueryTestResult.balance_raw}
+                  </pre>
+                </div>
+              )}
+              {balanceQueryTestResult.usage_raw && (
+                <div className='space-y-1'>
+                  <div className='text-muted-foreground font-medium'>
+                    {t('Usage Response')}{' '}
+                    {balanceQueryTestResult.usage_url
+                      ? `(${balanceQueryTestResult.usage_url})`
+                      : ''}
+                  </div>
+                  <pre className='bg-background max-h-48 overflow-auto rounded border p-2 font-mono text-[11px]'>
+                    {balanceQueryTestResult.usage_raw}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </fieldset>
     </div>

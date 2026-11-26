@@ -267,3 +267,36 @@ func TestUpdateChannelPureUsagePostAndMagpiePath(t *testing.T) {
 	assert.InDelta(t, 12.5, result.Detail.Windows[0].Used, 1e-9)
 	assert.Equal(t, "USD", result.Detail.Windows[0].Unit)
 }
+
+func TestUpdateChannelSimultaneousBalanceAndUsageFields(t *testing.T) {
+	setupSub2APIBalanceTest(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bal":
+			_, _ = w.Write([]byte(`{"remaining":45.5}`))
+		case "/use":
+			_, _ = w.Write([]byte(`{"used":14.25}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	baseURL := server.URL
+	otherSettings := `{"balance_query":{"balance_url":"/bal","usage_url":"/use","balance_field":"remaining","usage_field":"used","currency":"USD"}}`
+	channel := &model.Channel{
+		Type:          constant.ChannelTypeOpenAI,
+		BaseURL:       &baseURL,
+		Key:           "sk-both",
+		Name:          "both-fields",
+		OtherSettings: otherSettings,
+	}
+	require.NoError(t, model.DB.Create(channel).Error)
+
+	result, err := updateChannelBalance(channel)
+	require.NoError(t, err)
+	assert.InDelta(t, 45.5, result.Balance, 1e-9)
+	require.NotNil(t, result.Detail)
+	require.Len(t, result.Detail.Windows, 1)
+	assert.InDelta(t, 14.25, result.Detail.Windows[0].Used, 1e-9)
+}
