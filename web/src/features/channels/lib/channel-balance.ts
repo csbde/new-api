@@ -89,3 +89,30 @@ export function formatChannelBalanceSummary(
   }
   return formatCurrencyFromUSD(usdBalance, options)
 }
+
+export type ChannelBalanceDisplayFlags = {
+  showUsage: boolean
+  showBalance: boolean
+}
+
+export function getChannelBalanceDisplayFlags(
+  settingsJson?: string | null
+): ChannelBalanceDisplayFlags {
+  if (!settingsJson) return { showUsage: true, showBalance: true }
+  try {
+    const parsed = JSON.parse(settingsJson) as {
+      balance_query?: {
+        show_usage?: unknown
+        show_balance?: unknown
+      }
+    }
+    const bq = parsed?.balance_query
+    return {
+      showUsage: bq?.show_usage !== false,
+      showBalance: bq?.show_balance !== false,
+    }
+  } catch {
+    /* ignore invalid settings JSON */
+  }
+  return { showUsage: true, showBalance: true }
+}

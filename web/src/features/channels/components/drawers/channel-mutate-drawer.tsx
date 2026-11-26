@@ -3080,6 +3080,61 @@ export function ChannelMutateDrawer({
           <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
             <FormField
               control={form.control}
+              name='balance_query_show_usage'
+              render={({ field }) => (
+                <FormItem className='flex items-center justify-between gap-3 rounded-lg border px-3 py-2'>
+                  <FormLabel className='text-sm'>{t('Show Usage')}</FormLabel>
+                  <FormControl>
+                    <Switch
+                      checked={field.value !== false}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='balance_query_show_balance'
+              render={({ field }) => (
+                <FormItem className='flex items-center justify-between gap-3 rounded-lg border px-3 py-2'>
+                  <FormLabel className='text-sm'>{t('Show Balance')}</FormLabel>
+                  <FormControl>
+                    <Switch
+                      checked={field.value !== false}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='balance_query_method'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Query HTTP Method')}</FormLabel>
+                  <Select
+                    value={field.value || 'GET'}
+                    onValueChange={field.onChange}
+                  >
+                    <FormControl>
+                      <SelectTrigger className='w-full'>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        <SelectItem value='GET'>GET</SelectItem>
+                        <SelectItem value='POST'>POST</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
               name='balance_query_url'
               render={({ field }) => (
                 <FormItem>

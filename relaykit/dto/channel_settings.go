@@ -153,6 +153,9 @@ type ChannelOtherSettings struct {
 // ChannelBalanceQueryConfig overrides the balance/usage query endpoints and
 // response field mappings for a channel.
 type ChannelBalanceQueryConfig struct {
+	Method         string  `json:"method,omitempty"`
+	ShowUsage      *bool   `json:"show_usage,omitempty"`
+	ShowBalance    *bool   `json:"show_balance,omitempty"`
 	BalanceURL     string  `json:"balance_url,omitempty"`
 	UsageURL       string  `json:"usage_url,omitempty"`
 	BalanceField   string  `json:"balance_field,omitempty"`

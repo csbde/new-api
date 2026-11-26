@@ -661,8 +661,11 @@ func extractJSONNumberByPath(body []byte, path string) (float64, error) {
 	if err := common.Unmarshal(body, &root); err != nil {
 		return 0, fmt.Errorf("invalid JSON response: %w", err)
 	}
+	trimmed := strings.TrimSpace(path)
+	trimmed = strings.TrimPrefix(trimmed, "$.")
+	trimmed = strings.TrimPrefix(trimmed, "$")
 	current := root
-	for part := range strings.SplitSeq(strings.TrimSpace(path), ".") {
+	for part := range strings.SplitSeq(trimmed, ".") {
 		if part == "" {
 			continue
 		}
@@ -700,12 +703,16 @@ func extractJSONNumberByPath(body []byte, path string) (float64, error) {
 	}
 }
 
-func fetchCustomBalanceBody(channel *model.Channel, targetURL string) ([]byte, error) {
+func fetchCustomBalanceBody(channel *model.Channel, method, targetURL string) ([]byte, error) {
+	reqMethod := strings.ToUpper(strings.TrimSpace(method))
+	if reqMethod != http.MethodPost {
+		reqMethod = http.MethodGet
+	}
 	headers := GetAuthHeader(strings.TrimSpace(channel.Key))
 	if err := applyFetchModelsHeaderOverrides(channel, strings.TrimSpace(channel.Key), headers); err != nil {
 		return nil, sanitizeFetchModelsError(err, channel.Key)
 	}
-	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
+	req, err := http.NewRequest(reqMethod, targetURL, nil)
 	if err != nil {
 		return nil, sanitizeFetchModelsError(err, channel.Key)
 	}
@@ -754,7 +761,7 @@ func fetchCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQuer
 	var balanceBody []byte
 	var err error
 	if balanceURL != "" {
-		balanceBody, err = fetchCustomBalanceBody(channel, balanceURL)
+		balanceBody, err = fetchCustomBalanceBody(channel, cfg.Method, balanceURL)
 		if err != nil {
 			return channelBalanceResult{}, err
 		}
@@ -780,12 +787,19 @@ func fetchCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQuer
 	if usageDivisor <= 0 {
 		usageDivisor = 1
 	}
+	currency := strings.ToUpper(strings.TrimSpace(cfg.Currency))
+	if currency == "" {
+		currency = "USD"
+	}
 
+	var hasAmount bool
 	var rawAmount float64
+	var windows []jsplugin.BalanceWindow
+
 	if balanceField != "" {
 		source := balanceBody
 		if len(source) == 0 && usageURL != "" {
-			source, err = fetchCustomBalanceBody(channel, usageURL)
+			source, err = fetchCustomBalanceBody(channel, cfg.Method, usageURL)
 			if err != nil {
 				return channelBalanceResult{}, err
 			}
@@ -795,19 +809,19 @@ func fetchCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQuer
 			return channelBalanceResult{}, err
 		}
 		rawAmount = val / balanceDivisor
-	} else {
-		if totalField == "" {
-			return channelBalanceResult{}, errors.New("balance_field or total_field is required when mapping balance")
-		}
+		hasAmount = true
+	} else if totalField != "" {
 		total, err := extractJSONNumberByPath(balanceBody, totalField)
 		if err != nil {
 			return channelBalanceResult{}, err
 		}
-		rawAmount = total / balanceDivisor
+		totalVal := total / balanceDivisor
+		rawAmount = totalVal
+		hasAmount = true
 		if usageField != "" {
 			usageBody := balanceBody
 			if usageURL != "" && usageURL != balanceURL {
-				usageBody, err = fetchCustomBalanceBody(channel, usageURL)
+				usageBody, err = fetchCustomBalanceBody(channel, cfg.Method, usageURL)
 				if err != nil {
 					return channelBalanceResult{}, err
 				}
@@ -816,18 +830,51 @@ func fetchCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQuer
 			if err != nil {
 				return channelBalanceResult{}, err
 			}
-			rawAmount -= used / usageDivisor
+			usedVal := used / usageDivisor
+			rawAmount = totalVal - usedVal
+			windows = append(windows, jsplugin.BalanceWindow{
+				Name:  jsplugin.LocalizedText{"en": "Usage", "zh": "用量"},
+				Used:  usedVal,
+				Limit: totalVal,
+				Unit:  currency,
+			})
 		}
+	} else if usageField != "" {
+		usageBody := balanceBody
+		if len(usageBody) == 0 || (usageURL != "" && usageURL != balanceURL) {
+			usageBody, err = fetchCustomBalanceBody(channel, cfg.Method, usageURL)
+			if err != nil {
+				return channelBalanceResult{}, err
+			}
+		}
+		used, err := extractJSONNumberByPath(usageBody, usageField)
+		if err != nil {
+			return channelBalanceResult{}, err
+		}
+		usedVal := used / usageDivisor
+		windows = append(windows, jsplugin.BalanceWindow{
+			Name: jsplugin.LocalizedText{"en": "Usage", "zh": "用量"},
+			Used: usedVal,
+			Unit: currency,
+		})
 	}
 
-	currency := strings.ToUpper(strings.TrimSpace(cfg.Currency))
-	if currency == "" {
-		currency = "USD"
+	if !hasAmount {
+		return channelBalanceResult{
+			Detail: &model.ChannelBalanceDetail{
+				BalanceResult: jsplugin.BalanceResult{
+					Currency: currency,
+					Windows:  windows,
+				},
+			},
+		}, nil
 	}
+
 	amountCopy := rawAmount
 	balanceResult := jsplugin.BalanceResult{
 		Amount:   &amountCopy,
 		Currency: currency,
+		Windows:  windows,
 	}
 	usd := rawAmount
 	if currency == "CNY" {

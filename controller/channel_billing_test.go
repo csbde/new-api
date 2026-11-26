@@ -239,3 +239,31 @@ func TestUpdateBuiltinMultiKeyChannelBalanceAndCustomMapping(t *testing.T) {
 	require.NoError(t, model.DB.First(&stored, channel.Id).Error)
 	assert.InDelta(t, 27.5, stored.Balance, 1e-9)
 }
+
+func TestUpdateChannelPureUsagePostAndMagpiePath(t *testing.T) {
+	setupSub2APIBalanceTest(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/magpie/usage", r.URL.Path)
+		_, _ = w.Write([]byte(`{"data":{"used_amount":"1250"}}`))
+	}))
+	defer server.Close()
+
+	baseURL := server.URL
+	otherSettings := `{"balance_query":{"method":"POST","show_usage":true,"show_balance":false,"usage_url":"/magpie/usage","usage_field":"$data.used_amount","usage_divisor":100,"currency":"USD"}}`
+	channel := &model.Channel{
+		Type:          constant.ChannelTypeOpenAI,
+		BaseURL:       &baseURL,
+		Key:           "sk-magpie",
+		Name:          "magpie-usage-only",
+		OtherSettings: otherSettings,
+	}
+	require.NoError(t, model.DB.Create(channel).Error)
+
+	result, err := updateChannelBalance(channel)
+	require.NoError(t, err)
+	require.NotNil(t, result.Detail)
+	require.Len(t, result.Detail.Windows, 1)
+	assert.InDelta(t, 12.5, result.Detail.Windows[0].Used, 1e-9)
+	assert.Equal(t, "USD", result.Detail.Windows[0].Unit)
+}

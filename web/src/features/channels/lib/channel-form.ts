@@ -298,6 +298,9 @@ export const channelFormSchema = z
     upstream_model_update_auto_sync_enabled: z.boolean().optional(),
     upstream_model_update_ignored_models: z.string().optional(),
     // Balance & usage query override/mapping (stored in settings JSON)
+    balance_query_method: z.string().optional(),
+    balance_query_show_usage: z.boolean().optional(),
+    balance_query_show_balance: z.boolean().optional(),
     balance_query_url: z.string().optional(),
     balance_query_usage_url: z.string().optional(),
     balance_query_balance_field: z.string().optional(),
@@ -507,6 +510,9 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   upstream_model_update_check_enabled: false,
   upstream_model_update_auto_sync_enabled: false,
   upstream_model_update_ignored_models: '',
+  balance_query_method: 'GET',
+  balance_query_show_usage: true,
+  balance_query_show_balance: true,
   balance_query_url: '',
   balance_query_usage_url: '',
   balance_query_balance_field: '',
@@ -600,6 +606,9 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateCheckEnabled = false
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
+  let balanceQueryMethod = 'GET'
+  let balanceQueryShowUsage = true
+  let balanceQueryShowBalance = true
   let balanceQueryUrl = ''
   let balanceQueryUsageUrl = ''
   let balanceQueryBalanceField = ''
@@ -648,6 +657,15 @@ export function transformChannelToFormDefaults(
       }
       if (isJsonObjectValue(parsed.balance_query)) {
         const bq = parsed.balance_query
+        if (typeof bq.method === 'string' && bq.method.trim()) {
+          balanceQueryMethod = bq.method.trim().toUpperCase()
+        }
+        if (typeof bq.show_usage === 'boolean') {
+          balanceQueryShowUsage = bq.show_usage
+        }
+        if (typeof bq.show_balance === 'boolean') {
+          balanceQueryShowBalance = bq.show_balance
+        }
         if (typeof bq.balance_url === 'string') {
           balanceQueryUrl = bq.balance_url
         }
@@ -727,6 +745,9 @@ export function transformChannelToFormDefaults(
     upstream_model_update_check_enabled: upstreamModelUpdateCheckEnabled,
     upstream_model_update_auto_sync_enabled: upstreamModelUpdateAutoSyncEnabled,
     upstream_model_update_ignored_models: upstreamModelUpdateIgnoredModels,
+    balance_query_method: balanceQueryMethod,
+    balance_query_show_usage: balanceQueryShowUsage,
+    balance_query_show_balance: balanceQueryShowBalance,
     balance_query_url: balanceQueryUrl,
     balance_query_usage_url: balanceQueryUsageUrl,
     balance_query_balance_field: balanceQueryBalanceField,
@@ -905,6 +926,11 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
   settingsObj.disable_task_polling_sleep =
     formData.disable_task_polling_sleep === true
 
+  const queryMethod = String(formData.balance_query_method || '')
+    .trim()
+    .toUpperCase()
+  const showUsage = formData.balance_query_show_usage !== false
+  const showBalance = formData.balance_query_show_balance !== false
   const balanceUrl = String(formData.balance_query_url || '').trim()
   const usageUrl = String(formData.balance_query_usage_url || '').trim()
   const balanceField = String(formData.balance_query_balance_field || '').trim()
@@ -916,6 +942,9 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     .trim()
     .toUpperCase()
   const hasBalanceQuery =
+    (queryMethod !== '' && queryMethod !== 'GET') ||
+    !showUsage ||
+    !showBalance ||
     Boolean(balanceUrl) ||
     Boolean(usageUrl) ||
     Boolean(balanceField) ||
@@ -925,7 +954,10 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     (Number.isFinite(usageDivisor) && usageDivisor > 0) ||
     (queryCurrency !== '' && queryCurrency !== 'USD')
   if (hasBalanceQuery) {
-    const bq: Record<string, string | number> = {}
+    const bq: Record<string, string | number | boolean> = {}
+    if (queryMethod && queryMethod !== 'GET') bq.method = queryMethod
+    if (!showUsage) bq.show_usage = false
+    if (!showBalance) bq.show_balance = false
     if (balanceUrl) bq.balance_url = balanceUrl
     if (usageUrl) bq.usage_url = usageUrl
     if (balanceField) bq.balance_field = balanceField

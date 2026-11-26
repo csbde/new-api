@@ -93,7 +93,11 @@ import {
   getMultiKeyConfirmMessage,
   isDestructiveAction,
 } from '../../lib'
-import { formatChannelBalanceSummary } from '../../lib/channel-balance'
+import {
+  formatChannelBalanceAmount,
+  formatChannelBalanceSummary,
+  getChannelBalanceDisplayFlags,
+} from '../../lib/channel-balance'
 import type { KeyStatus, MultiKeyConfirmAction } from '../../types'
 import { ChannelBalanceDetails } from '../channel-balance-details'
 import { useChannels } from '../channels-provider'
@@ -117,6 +121,9 @@ export function MultiKeyManageDialog({
     : undefined
   const balanceQueryable = useChannelBalanceQueryable(
     currentRow ?? { type: 0, setting: '' }
+  )
+  const { showUsage, showBalance } = getChannelBalanceDisplayFlags(
+    currentRow?.settings
   )
   const [isQueryingBalance, setIsQueryingBalance] = useState(false)
   const queryClient = useQueryClient()
@@ -839,25 +846,35 @@ export function MultiKeyManageDialog({
                       )
                     },
                   },
-                  ...(keyBalances
+                  ...(keyBalances && (showUsage || showBalance)
                     ? [
                         {
                           id: 'balance',
-                          header: t('Balance'),
+                          header:
+                            showUsage && !showBalance
+                              ? t('Usage')
+                              : t('Balance'),
                           className: 'w-48',
                           cellClassName: 'text-sm',
                           cell: (key: KeyStatus) => {
                             const result = keyBalances[String(key.index)]
                             if (!result) return '-'
-                            return (
-                              <div className='max-w-56 space-y-0.5 whitespace-normal'>
-                                <div className='font-medium'>
-                                  {formatChannelBalanceSummary(
+                            const usageWindow = result.windows?.[0]
+                            const summaryText =
+                              showUsage && !showBalance && usageWindow
+                                ? formatChannelBalanceAmount(
+                                    usageWindow.used,
+                                    usageWindow.unit || result.currency,
+                                    { locale }
+                                  )
+                                : formatChannelBalanceSummary(
                                     result,
                                     Number.NaN,
                                     { locale }
-                                  )}
-                                </div>
+                                  )
+                            return (
+                              <div className='max-w-56 space-y-0.5 whitespace-normal'>
+                                <div className='font-medium'>{summaryText}</div>
                                 <ChannelBalanceDetails
                                   result={result}
                                   className='text-muted-foreground'

@@ -90,7 +90,9 @@ import {
   type TagRow,
 } from '../lib'
 import {
+  formatChannelBalanceAmount,
   formatChannelBalanceSummary,
+  getChannelBalanceDisplayFlags,
   getChannelBalanceUsedPercent,
 } from '../lib/channel-balance'
 import { parseUpstreamUpdateMeta } from '../lib/upstream-update-utils'
@@ -572,56 +574,108 @@ export function BalanceCell({ channel }: { channel: Channel }) {
     />
   )
   const balanceQueryHint = balanceClickable && channel.type !== 57
+  const { showUsage, showBalance } = getChannelBalanceDisplayFlags(
+    channel.settings
+  )
+  const usageOnly = showUsage && !showBalance
+  const upstreamUsageWindow = detail?.windows?.[0]
+  const upstreamUsedDisplay = upstreamUsageWindow
+    ? formatChannelBalanceAmount(
+        upstreamUsageWindow.used,
+        upstreamUsageWindow.unit || detail?.currency,
+        { ...balanceFormatOptions, locale }
+      )
+    : null
+  let usageBadgeLabel = SENSITIVE_MASK
+  if (sensitiveVisible) {
+    usageBadgeLabel = isUpdating
+      ? t('Updating...')
+      : (upstreamUsedDisplay ?? usedDisplay)
+  }
+  const usageTooltipLabel = sensitiveVisible
+    ? `${t('Used:')} ${upstreamUsedDisplay ?? usedFull}`
+    : maskedUsedLabel
+  let leftBadgeLabel = sensitiveVisible ? usedDisplay : SENSITIVE_MASK
+  let leftTooltipLabel = sensitiveVisible ? usedLabel : maskedUsedLabel
+  if (usageOnly) {
+    leftBadgeLabel = usageBadgeLabel
+    leftTooltipLabel = usageTooltipLabel
+  }
 
   return (
     <TooltipProvider>
       <div className='-ml-1.5 flex items-center gap-1'>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <StatusBadge
-                label={sensitiveVisible ? usedDisplay : SENSITIVE_MASK}
-                variant='neutral'
-                size='sm'
-                copyable={false}
-                showDot={false}
-                className='cursor-help'
-              />
-            }
-          />
-          <TooltipContent>
-            <p>{sensitiveVisible ? usedLabel : maskedUsedLabel}</p>
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              isInferenceChannel ? (
-                <Button
-                  variant='ghost'
+        {!showUsage && !showBalance && (
+          <span className='text-muted-foreground px-1.5 text-xs'>-</span>
+        )}
+        {showUsage && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <StatusBadge
+                  label={leftBadgeLabel}
+                  variant='neutral'
                   size='sm'
-                  className='h-auto rounded-full p-0'
-                  aria-haspopup='dialog'
-                  onClick={handleClickUpdate}
-                >
-                  {remainingBadge}
-                </Button>
-              ) : (
-                remainingBadge
-              )
-            }
-          />
-          <TooltipContent className='flex-col items-start'>
-            <p>{remainingTooltipLabel}</p>
-            {sensitiveVisible && balanceQueryHint && (
-              <ChannelBalanceDetails
-                result={detail}
-                updatedTime={channel.balance_updated_time}
-              />
-            )}
-            {balanceQueryHint && <p>{t('Click to update balance')}</p>}
-          </TooltipContent>
-        </Tooltip>
+                  copyable={false}
+                  showDot={false}
+                  className={
+                    usageOnly && balanceClickable
+                      ? 'cursor-pointer'
+                      : 'cursor-help'
+                  }
+                  onClick={
+                    usageOnly && balanceClickable
+                      ? handleClickUpdate
+                      : undefined
+                  }
+                />
+              }
+            />
+            <TooltipContent className='flex-col items-start'>
+              <p>{leftTooltipLabel}</p>
+              {usageOnly && sensitiveVisible && balanceQueryHint && (
+                <ChannelBalanceDetails
+                  result={detail}
+                  updatedTime={channel.balance_updated_time}
+                />
+              )}
+              {usageOnly && balanceQueryHint && (
+                <p>{t('Click to update balance')}</p>
+              )}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {showBalance && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                isInferenceChannel ? (
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    className='h-auto rounded-full p-0'
+                    aria-haspopup='dialog'
+                    onClick={handleClickUpdate}
+                  >
+                    {remainingBadge}
+                  </Button>
+                ) : (
+                  remainingBadge
+                )
+              }
+            />
+            <TooltipContent className='flex-col items-start'>
+              <p>{remainingTooltipLabel}</p>
+              {sensitiveVisible && balanceQueryHint && (
+                <ChannelBalanceDetails
+                  result={detail}
+                  updatedTime={channel.balance_updated_time}
+                />
+              )}
+              {balanceQueryHint && <p>{t('Click to update balance')}</p>}
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       <CodexUsageDialog
