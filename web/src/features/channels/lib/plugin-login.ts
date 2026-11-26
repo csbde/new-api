@@ -23,7 +23,7 @@ import type { LocalizedTextValue } from '@/lib/localized-text'
 import { getServerErrorSources } from '@/lib/server-error-message'
 
 /** The callback page hands its result to the login dialog on this channel. */
-export const PLUGIN_LOGIN_BROADCAST_CHANNEL = 'new-api-plugin-login'
+export const PLUGIN_LOGIN_BROADCAST_CHANNEL = 'app-plugin-login'
 
 /** RFC 8628 §3.2: clients poll every 5 seconds unless told otherwise. */
 const DEFAULT_POLL_INTERVAL = 5

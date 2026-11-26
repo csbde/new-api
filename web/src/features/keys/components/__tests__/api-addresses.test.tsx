@@ -17,19 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import {
-  act,
-  cleanup,
-  render,
-  screen,
-  within,
-  waitFor,
-} from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { STATUS_QUERY_KEY, type StatusData } from '@/lib/status-query'
 
+import { ApiAddressesBar } from '../api-addresses-bar'
 import { ApiKeysPrimaryButtons } from '../api-keys-primary-buttons'
 import { ApiKeysProvider } from '../api-keys-provider'
 
@@ -54,12 +48,13 @@ function renderAddresses(status: StatusData) {
     <QueryClientProvider client={client}>
       <ApiKeysProvider>
         <ApiKeysPrimaryButtons />
+        <ApiAddressesBar />
       </ApiKeysProvider>
     </QueryClientProvider>
   )
 }
 
-it('shows every configured address and copies only the chosen visible URL', async () => {
+it('shows every configured address inline without a dropdown and copies only the chosen visible URL', async () => {
   const user = userEvent.setup()
   const writeText = vi.spyOn(navigator.clipboard, 'writeText')
   renderAddresses({
@@ -81,9 +76,12 @@ it('shows every configured address and copies only the chosen visible URL', asyn
     ],
   })
 
-  await user.click(screen.getByRole('button', { name: 'API Addresses' }))
-  const dialog = await screen.findByRole('dialog', { name: 'API Addresses' })
-  const rows = within(dialog).getAllByRole('listitem')
+  expect(
+    screen.queryByRole('button', { name: 'API Addresses' })
+  ).not.toBeInTheDocument()
+
+  const region = screen.getByRole('region', { name: 'API Addresses' })
+  const rows = within(region).getAllByRole('listitem')
   expect(rows).toHaveLength(2)
   expect(rows[0]).toHaveTextContent('Global')
   expect(rows[0]).toHaveTextContent('Worldwide access')
@@ -142,32 +140,23 @@ it.each([
     url: 'https://gateway.example.com',
   },
 ])(
-  'shows and copies the fallback $label when no configured addresses are available',
+  'shows and copies the fallback $label inline when no configured addresses are available',
   async ({ status, label, url }) => {
     const user = userEvent.setup()
     const writeText = vi.spyOn(navigator.clipboard, 'writeText')
     renderAddresses(status)
 
-    await user.tab()
-    const trigger = screen.getByRole('button', { name: 'API Addresses' })
-    expect(trigger).toHaveFocus()
-    await user.keyboard('{Enter}')
-    const dialog = await screen.findByRole('dialog', { name: 'API Addresses' })
-    expect(trigger).toHaveAttribute('aria-expanded', 'true')
-    expect(within(dialog).getAllByRole('listitem')).toHaveLength(1)
-    expect(within(dialog).getByText(label)).toBeVisible()
-    expect(within(dialog).getByText(url)).toBeVisible()
-    const copy = within(dialog).getByRole('button', {
+    const region = screen.getByRole('region', { name: 'API Addresses' })
+    expect(within(region).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(region).getByText(label)).toBeVisible()
+    expect(within(region).getByText(url)).toBeVisible()
+    const copy = within(region).getByRole('button', {
       name: `Copy API URL: ${url}`,
     })
-    await waitFor(() => expect(copy).toHaveFocus())
+    copy.focus()
+    expect(copy).toHaveFocus()
     await user.keyboard('{Enter}')
     expect(writeText).toHaveBeenCalledWith(url)
-    await user.keyboard('{Escape}')
-    await waitFor(() =>
-      expect(trigger).toHaveAttribute('aria-expanded', 'false')
-    )
-    expect(trigger).toHaveFocus()
   }
 )
 
@@ -185,11 +174,12 @@ it('keeps long addresses readable within the scrollable panel and updates when c
       },
     ],
   })
-  await user.click(screen.getByRole('button', { name: 'API Addresses' }))
-  const dialog = await screen.findByRole('dialog', { name: 'API Addresses' })
-  expect(dialog).toHaveClass('max-w-[calc(100vw-2rem)]', 'overflow-y-auto')
-  expect(within(dialog).getByText(url)).toHaveClass('break-all')
-  expect(within(dialog).getByText(url)).not.toHaveClass('truncate')
+
+  const region = screen.getByRole('region', { name: 'API Addresses' })
+  const list = within(region).getByRole('list')
+  expect(list).toHaveClass('overflow-y-auto')
+  expect(within(region).getByText(url)).toHaveClass('break-all')
+  expect(within(region).getByText(url)).not.toHaveClass('truncate')
 
   act(() => {
     client.setQueryData(STATUS_QUERY_KEY, {
@@ -204,11 +194,11 @@ it('keeps long addresses readable within the scrollable panel and updates when c
     })
   })
   expect(
-    await within(dialog).findByText('https://new.example.com')
+    await within(region).findByText('https://new.example.com')
   ).toBeVisible()
-  expect(within(dialog).queryByText(url)).not.toBeInTheDocument()
+  expect(within(region).queryByText(url)).not.toBeInTheDocument()
   await user.click(
-    within(dialog).getByRole('button', {
+    within(region).getByRole('button', {
       name: 'Copy API URL: https://new.example.com',
     })
   )
