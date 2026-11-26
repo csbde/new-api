@@ -214,7 +214,14 @@ func updateBalanceInRun(channel *model.Channel) {
 		return
 	}
 	if channel.ChannelInfo.IsMultiKey {
-		return // built-in multi-key channels have no balance query
+		balances, _, _ := updateBuiltinMultiKeyChannelBalance(channel, true)
+		for _, balance := range balances {
+			if balance.err != nil || !emptyBalance(balance.result) {
+				continue
+			}
+			service.DisableChannel(*types.NewChannelError(channel.Id, channel.Type, channel.Name, true, balance.key, channel.GetAutoBan()), "Insufficient balance")
+		}
+		return
 	}
 	result, err := withBalanceTimeout(func() (channelBalanceResult, error) {
 		return updateChannelBalance(channel)

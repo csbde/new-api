@@ -181,3 +181,61 @@ func TestUpdateChannelNewAPIBalanceUsesTheSmallerRemainingQuota(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateBuiltinMultiKeyChannelBalanceAndCustomMapping(t *testing.T) {
+	setupSub2APIBalanceTest(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/custom/balance":
+			switch r.Header.Get("Authorization") {
+			case "Bearer sk-1":
+				_, _ = w.Write([]byte(`{"data":{"limit":1000}}`))
+			case "Bearer sk-2":
+				_, _ = w.Write([]byte(`{"data":{"limit":2500}}`))
+			default:
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+			}
+		case "/custom/usage":
+			switch r.Header.Get("Authorization") {
+			case "Bearer sk-1":
+				_, _ = w.Write([]byte(`{"data":{"used":250}}`))
+			case "Bearer sk-2":
+				_, _ = w.Write([]byte(`{"data":{"used":500}}`))
+			default:
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	baseURL := server.URL
+	otherSettings := `{"balance_query":{"balance_url":"/custom/balance","usage_url":"/custom/usage","total_field":"data.limit","usage_field":"data.used","balance_divisor":100,"usage_divisor":100,"currency":"USD"}}`
+	channel := &model.Channel{
+		Type:          constant.ChannelTypeOpenAI,
+		BaseURL:       &baseURL,
+		Key:           "sk-1\nsk-2",
+		Name:          "openai-multi-custom",
+		OtherSettings: otherSettings,
+		ChannelInfo: model.ChannelInfo{
+			IsMultiKey:   true,
+			MultiKeySize: 2,
+		},
+	}
+	require.NoError(t, model.DB.Create(channel).Error)
+
+	result, err := updateChannelBalance(channel)
+	require.NoError(t, err)
+	require.NotNil(t, result.Detail)
+	// Key 0: (1000-250)/100 = 7.5; Key 1: (2500-500)/100 = 20; Total = 27.5
+	assert.InDelta(t, 27.5, result.Balance, 1e-9)
+	require.NotNil(t, result.Detail.Keys["0"].Amount)
+	require.NotNil(t, result.Detail.Keys["1"].Amount)
+	assert.InDelta(t, 7.5, *result.Detail.Keys["0"].Amount, 1e-9)
+	assert.InDelta(t, 20.0, *result.Detail.Keys["1"].Amount, 1e-9)
+
+	var stored model.Channel
+	require.NoError(t, model.DB.First(&stored, channel.Id).Error)
+	assert.InDelta(t, 27.5, stored.Balance, 1e-9)
+}

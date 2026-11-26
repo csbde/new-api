@@ -146,7 +146,21 @@ type ChannelOtherSettings struct {
 	ToolLossPolicy string `json:"tool_loss_policy,omitempty"`
 	// PluginConfig is the config a type-61 channel gives its plugin, checked
 	// against the plugin's meta.channelConfig when the channel is saved.
-	PluginConfig json.RawMessage `json:"plugin_config,omitempty"`
+	PluginConfig json.RawMessage            `json:"plugin_config,omitempty"`
+	BalanceQuery *ChannelBalanceQueryConfig `json:"balance_query,omitempty"`
+}
+
+// ChannelBalanceQueryConfig overrides the balance/usage query endpoints and
+// response field mappings for a channel.
+type ChannelBalanceQueryConfig struct {
+	BalanceURL     string  `json:"balance_url,omitempty"`
+	UsageURL       string  `json:"usage_url,omitempty"`
+	BalanceField   string  `json:"balance_field,omitempty"`
+	TotalField     string  `json:"total_field,omitempty"`
+	UsageField     string  `json:"usage_field,omitempty"`
+	BalanceDivisor float64 `json:"balance_divisor,omitempty"`
+	UsageDivisor   float64 `json:"usage_divisor,omitempty"`
+	Currency       string  `json:"currency,omitempty"`
 }
 
 func (s *ChannelOtherSettings) IsOpenRouterEnterprise() bool {

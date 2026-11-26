@@ -29,6 +29,7 @@ import {
   CheckCircle2,
   AlertCircle,
   X,
+  DollarSign,
 } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -81,11 +82,10 @@ import {
   deleteDisabledMultiKeys,
   addMultiKeys,
   testChannel,
+  updateChannelBalance,
 } from '../../api'
-import {
-  CHANNEL_TYPE_TASK_PLUGIN,
-  MULTI_KEY_FILTER_OPTIONS,
-} from '../../constants'
+import { MULTI_KEY_FILTER_OPTIONS } from '../../constants'
+import { useChannelBalanceQueryable } from '../../hooks/use-task-plugin-option'
 import {
   channelsQueryKeys,
   formatTimestamp,
@@ -110,13 +110,15 @@ export function MultiKeyManageDialog({
   onOpenChange,
 }: MultiKeyManageDialogProps) {
   const { t, i18n } = useTranslation()
-  const { currentRow } = useChannels()
+  const { currentRow, setCurrentRow } = useChannels()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
-  // A plugin channel queries the balance of each key.
-  const keyBalances =
-    currentRow?.type === CHANNEL_TYPE_TASK_PLUGIN
-      ? currentRow.balance_detail?.keys
-      : undefined
+  const keyBalances = currentRow?.channel_info?.is_multi_key
+    ? (currentRow.balance_detail?.keys ?? {})
+    : undefined
+  const balanceQueryable = useChannelBalanceQueryable(
+    currentRow ?? { type: 0, setting: '' }
+  )
+  const [isQueryingBalance, setIsQueryingBalance] = useState(false)
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((s) => s.auth.user)
   const canEditSensitive = hasPermission(
@@ -429,6 +431,41 @@ export function MultiKeyManageDialog({
     )
   }
 
+  const handleQueryBalance = async () => {
+    if (!currentRow) return
+    setIsQueryingBalance(true)
+    try {
+      const response = await updateChannelBalance(currentRow.id)
+      if (response.success && response.balance !== undefined) {
+        const now = Math.floor(Date.now() / 1000)
+        setCurrentRow({
+          ...currentRow,
+          balance: response.balance,
+          balance_updated_time: now,
+          balance_detail: response.balance_detail ?? currentRow.balance_detail,
+        })
+        toast.success(
+          t('Balance updated: {{balance}}', {
+            balance: formatChannelBalanceSummary(
+              response.balance_detail,
+              response.balance,
+              { digitsLarge: 2, digitsSmall: 4, abbreviate: false, locale }
+            ),
+          })
+        )
+        void queryClient.invalidateQueries({
+          queryKey: channelsQueryKeys.lists(),
+        })
+      } else {
+        handleServerError(response, t('Failed to query balance'))
+      }
+    } catch (error: unknown) {
+      handleServerError(error, t('Failed to query balance'))
+    } finally {
+      setIsQueryingBalance(false)
+    }
+  }
+
   const formatKeyTimestamp = (timestamp?: number) => {
     if (!timestamp) return '-'
     return formatTimestamp(timestamp)
@@ -540,13 +577,30 @@ export function MultiKeyManageDialog({
             </div>
 
             <div className='flex items-center gap-2'>
+              {balanceQueryable && (
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={handleQueryBalance}
+                  disabled={isQueryingBalance}
+                >
+                  {isQueryingBalance ? (
+                    <Loader2 className='mr-1.5 h-4 w-4 animate-spin' />
+                  ) : (
+                    <DollarSign className='mr-1.5 h-4 w-4' />
+                  )}
+                  {t('Query Balance')}
+                </Button>
+              )}
               <Button
                 variant='outline'
                 size='sm'
                 onClick={() => loadKeyStatus()}
                 disabled={isLoading}
               >
-                <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} />
+                <RefreshCw
+                  className={cn('h-4 w-4', isLoading && 'animate-spin')}
+                />
               </Button>
 
               {manualDisabledCount + autoDisabledCount > 0 && (
@@ -599,7 +653,9 @@ export function MultiKeyManageDialog({
               <div className='flex items-center justify-between'>
                 <div className='flex items-center gap-2'>
                   <Key className='text-primary h-4 w-4' />
-                  <span className='text-sm font-medium'>{t('Add API Keys')}</span>
+                  <span className='text-sm font-medium'>
+                    {t('Add API Keys')}
+                  </span>
                 </div>
                 <Button
                   variant='ghost'
@@ -613,9 +669,7 @@ export function MultiKeyManageDialog({
               <Textarea
                 value={newKeysText}
                 onChange={(e) => setNewKeysText(e.target.value)}
-                placeholder={t(
-                  'Enter one key per line, e.g.\nsk-...\nsk-...'
-                )}
+                placeholder={t('Enter one key per line, e.g.\nsk-...\nsk-...')}
                 rows={3}
                 className='min-h-[72px] resize-y font-mono text-xs'
               />
@@ -753,7 +807,7 @@ export function MultiKeyManageDialog({
                           {testResult &&
                             (testResult.success ? (
                               <span
-                                className='bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-xs'
+                                className='inline-flex items-center gap-1 rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-xs text-emerald-600 dark:text-emerald-400'
                                 title={t('Test Passed')}
                               >
                                 <CheckCircle2 className='h-3 w-3' />

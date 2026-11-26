@@ -260,3 +260,44 @@ test('a plugin channel shows each key its own balance', async () => {
     /^-$/
   )
 })
+
+test('a built-in multi-key channel shows per-key balances and Query Balance button', async () => {
+  vi.spyOn(api, 'post').mockResolvedValue(
+    keyStatusResponse([
+      { index: 0, status: 1 },
+      { index: 1, status: 1 },
+    ])
+  )
+  const channel = channelSchema.parse({
+    ...multiKeyChannel,
+    type: 1,
+    channel_info: { ...multiKeyChannel.channel_info, multi_key_size: 2 },
+    balance: 27.5,
+    balance_detail: {
+      amount: 27.5,
+      currency: 'USD',
+      unlimited: false,
+      windows: [],
+      keys: {
+        '0': { amount: 7.5, currency: 'USD', unlimited: false, windows: [] },
+        '1': { amount: 20, currency: 'USD', unlimited: false, windows: [] },
+      },
+    },
+  })
+
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <ChannelsProvider>
+        <OpenDialog channel={channel} />
+      </ChannelsProvider>
+    </QueryClientProvider>
+  )
+
+  expect(
+    await screen.findByRole('button', { name: 'Query Balance' })
+  ).toBeVisible()
+  const first = await screen.findByRole('row', { name: /^#1\s/ })
+  expect(within(first).getByText('$7.5')).toBeInTheDocument()
+  const second = screen.getByRole('row', { name: /^#2\s/ })
+  expect(within(second).getByText('$20')).toBeInTheDocument()
+})

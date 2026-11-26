@@ -297,6 +297,15 @@ export const channelFormSchema = z
     upstream_model_update_check_enabled: z.boolean().optional(),
     upstream_model_update_auto_sync_enabled: z.boolean().optional(),
     upstream_model_update_ignored_models: z.string().optional(),
+    // Balance & usage query override/mapping (stored in settings JSON)
+    balance_query_url: z.string().optional(),
+    balance_query_usage_url: z.string().optional(),
+    balance_query_balance_field: z.string().optional(),
+    balance_query_total_field: z.string().optional(),
+    balance_query_usage_field: z.string().optional(),
+    balance_query_balance_divisor: z.string().optional(),
+    balance_query_usage_divisor: z.string().optional(),
+    balance_query_currency: z.string().optional(),
     // The bound plugin's channel settings (type 61, stored in settings JSON)
     plugin_config: z.record(z.string(), z.unknown()).optional(),
     // Their values as typed, null until edited (not sent to backend)
@@ -498,6 +507,14 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   upstream_model_update_check_enabled: false,
   upstream_model_update_auto_sync_enabled: false,
   upstream_model_update_ignored_models: '',
+  balance_query_url: '',
+  balance_query_usage_url: '',
+  balance_query_balance_field: '',
+  balance_query_total_field: '',
+  balance_query_usage_field: '',
+  balance_query_balance_divisor: '',
+  balance_query_usage_divisor: '',
+  balance_query_currency: 'USD',
   advanced_custom: '',
   plugin_config: {},
   plugin_config_draft: null,
@@ -583,6 +600,14 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateCheckEnabled = false
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
+  let balanceQueryUrl = ''
+  let balanceQueryUsageUrl = ''
+  let balanceQueryBalanceField = ''
+  let balanceQueryTotalField = ''
+  let balanceQueryUsageField = ''
+  let balanceQueryBalanceDivisor = ''
+  let balanceQueryUsageDivisor = ''
+  let balanceQueryCurrency = 'USD'
   let advancedCustom = ''
   let pluginConfig: Record<string, unknown> = {}
 
@@ -620,6 +645,33 @@ export function transformChannelToFormDefaults(
       }
       if (isJsonObjectValue(parsed.plugin_config)) {
         pluginConfig = parsed.plugin_config
+      }
+      if (isJsonObjectValue(parsed.balance_query)) {
+        const bq = parsed.balance_query
+        if (typeof bq.balance_url === 'string') {
+          balanceQueryUrl = bq.balance_url
+        }
+        if (typeof bq.usage_url === 'string') {
+          balanceQueryUsageUrl = bq.usage_url
+        }
+        if (typeof bq.balance_field === 'string') {
+          balanceQueryBalanceField = bq.balance_field
+        }
+        if (typeof bq.total_field === 'string') {
+          balanceQueryTotalField = bq.total_field
+        }
+        if (typeof bq.usage_field === 'string') {
+          balanceQueryUsageField = bq.usage_field
+        }
+        if (typeof bq.balance_divisor === 'number' && bq.balance_divisor > 0) {
+          balanceQueryBalanceDivisor = String(bq.balance_divisor)
+        }
+        if (typeof bq.usage_divisor === 'number' && bq.usage_divisor > 0) {
+          balanceQueryUsageDivisor = String(bq.usage_divisor)
+        }
+        if (typeof bq.currency === 'string' && bq.currency.trim()) {
+          balanceQueryCurrency = bq.currency.trim().toUpperCase()
+        }
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -675,6 +727,14 @@ export function transformChannelToFormDefaults(
     upstream_model_update_check_enabled: upstreamModelUpdateCheckEnabled,
     upstream_model_update_auto_sync_enabled: upstreamModelUpdateAutoSyncEnabled,
     upstream_model_update_ignored_models: upstreamModelUpdateIgnoredModels,
+    balance_query_url: balanceQueryUrl,
+    balance_query_usage_url: balanceQueryUsageUrl,
+    balance_query_balance_field: balanceQueryBalanceField,
+    balance_query_total_field: balanceQueryTotalField,
+    balance_query_usage_field: balanceQueryUsageField,
+    balance_query_balance_divisor: balanceQueryBalanceDivisor,
+    balance_query_usage_divisor: balanceQueryUsageDivisor,
+    balance_query_currency: balanceQueryCurrency,
     advanced_custom: advancedCustom,
     plugin_config: pluginConfig,
     plugin_config_draft: null,
@@ -844,6 +904,44 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
 
   settingsObj.disable_task_polling_sleep =
     formData.disable_task_polling_sleep === true
+
+  const balanceUrl = String(formData.balance_query_url || '').trim()
+  const usageUrl = String(formData.balance_query_usage_url || '').trim()
+  const balanceField = String(formData.balance_query_balance_field || '').trim()
+  const totalField = String(formData.balance_query_total_field || '').trim()
+  const usageField = String(formData.balance_query_usage_field || '').trim()
+  const balanceDivisor = Number(formData.balance_query_balance_divisor || '')
+  const usageDivisor = Number(formData.balance_query_usage_divisor || '')
+  const queryCurrency = String(formData.balance_query_currency || '')
+    .trim()
+    .toUpperCase()
+  const hasBalanceQuery =
+    Boolean(balanceUrl) ||
+    Boolean(usageUrl) ||
+    Boolean(balanceField) ||
+    Boolean(totalField) ||
+    Boolean(usageField) ||
+    (Number.isFinite(balanceDivisor) && balanceDivisor > 0) ||
+    (Number.isFinite(usageDivisor) && usageDivisor > 0) ||
+    (queryCurrency !== '' && queryCurrency !== 'USD')
+  if (hasBalanceQuery) {
+    const bq: Record<string, string | number> = {}
+    if (balanceUrl) bq.balance_url = balanceUrl
+    if (usageUrl) bq.usage_url = usageUrl
+    if (balanceField) bq.balance_field = balanceField
+    if (totalField) bq.total_field = totalField
+    if (usageField) bq.usage_field = usageField
+    if (Number.isFinite(balanceDivisor) && balanceDivisor > 0) {
+      bq.balance_divisor = balanceDivisor
+    }
+    if (Number.isFinite(usageDivisor) && usageDivisor > 0) {
+      bq.usage_divisor = usageDivisor
+    }
+    if (queryCurrency) bq.currency = queryCurrency
+    settingsObj.balance_query = bq
+  } else if ('balance_query' in settingsObj) {
+    delete settingsObj.balance_query
+  }
 
   // Upstream model update settings (for model-fetchable channel types; a
   // plugin channel shows them when its plugin can list models)

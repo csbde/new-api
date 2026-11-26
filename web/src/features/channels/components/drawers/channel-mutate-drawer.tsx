@@ -917,7 +917,9 @@ export function ChannelMutateDrawer({
           })
         }
         if (plugin.login && form.getValues('multi_key_mode') === 'batch') {
-          form.setValue('multi_key_mode', 'multi_to_single', { shouldDirty: true })
+          form.setValue('multi_key_mode', 'multi_to_single', {
+            shouldDirty: true,
+          })
         }
         if (!isEditing && !providerTarget && !form.getValues('name').trim()) {
           form.setValue('name', plugin.name)
@@ -3063,6 +3065,136 @@ export function ChannelMutateDrawer({
             </FormItem>
           )}
         />
+
+        <div className='space-y-3 border-t pt-4'>
+          <div className='space-y-1'>
+            <h4 className='text-sm font-medium'>
+              {t('Balance & Usage Query Override')}
+            </h4>
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'Override balance/usage query endpoints and JSON response field mappings for this channel.'
+              )}
+            </p>
+          </div>
+          <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+            <FormField
+              control={form.control}
+              name='balance_query_url'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Balance Endpoint URL / Path')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder='/v1/dashboard/billing/credit_grants'
+                      {...field}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='balance_query_usage_url'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Usage Endpoint URL / Path')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder='/v1/dashboard/billing/usage?start_date={start_date}&end_date={end_date}'
+                      {...field}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='balance_query_balance_field'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Balance Field Path')}</FormLabel>
+                  <FormControl>
+                    <Input placeholder='data.total_available' {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='balance_query_total_field'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Total Field Path')}</FormLabel>
+                  <FormControl>
+                    <Input placeholder='hard_limit_usd' {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='balance_query_usage_field'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Usage Field Path')}</FormLabel>
+                  <FormControl>
+                    <Input placeholder='total_usage' {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='balance_query_currency'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Query Currency')}</FormLabel>
+                  <Select
+                    value={field.value || 'USD'}
+                    onValueChange={field.onChange}
+                  >
+                    <FormControl>
+                      <SelectTrigger className='w-full'>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        <SelectItem value='USD'>USD</SelectItem>
+                        <SelectItem value='CNY'>CNY</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='balance_query_balance_divisor'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Balance Divisor')}</FormLabel>
+                  <FormControl>
+                    <Input placeholder='1' {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='balance_query_usage_divisor'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Usage Divisor')}</FormLabel>
+                  <FormControl>
+                    <Input placeholder='1' {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
       </fieldset>
     </div>
   )

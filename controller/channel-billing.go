@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relay/channel/advancedcustom"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -624,17 +625,322 @@ func fetchAdvancedCustomBalance(channel *model.Channel) (channelBalanceResult, e
 	return channelBalanceResult{RawResponse: string(formatted)}, nil
 }
 
+// hasBalanceQueryOverride reports whether the channel configures custom
+// balance/usage endpoint overrides or response field mappings.
+func hasBalanceQueryOverride(cfg *dto.ChannelBalanceQueryConfig) bool {
+	if cfg == nil {
+		return false
+	}
+	return strings.TrimSpace(cfg.BalanceURL) != "" ||
+		strings.TrimSpace(cfg.UsageURL) != "" ||
+		strings.TrimSpace(cfg.BalanceField) != "" ||
+		strings.TrimSpace(cfg.TotalField) != "" ||
+		strings.TrimSpace(cfg.UsageField) != ""
+}
+
+func resolveBalanceQueryURL(channel *model.Channel, rawURL string, startDate, endDate string) string {
+	u := strings.TrimSpace(rawURL)
+	if u == "" {
+		return ""
+	}
+	u = strings.ReplaceAll(u, "{start_date}", startDate)
+	u = strings.ReplaceAll(u, "{end_date}", endDate)
+	u = strings.ReplaceAll(u, "{key}", strings.TrimSpace(channel.Key))
+	if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+		return u
+	}
+	baseURL := channel.GetBaseURL()
+	if baseURL == "" {
+		baseURL = constant.GetChannelBaseURL(channel.Type)
+	}
+	return relaycommon.GetFullRequestURL(baseURL, u, channel.Type)
+}
+
+func extractJSONNumberByPath(body []byte, path string) (float64, error) {
+	var root any
+	if err := common.Unmarshal(body, &root); err != nil {
+		return 0, fmt.Errorf("invalid JSON response: %w", err)
+	}
+	current := root
+	for part := range strings.SplitSeq(strings.TrimSpace(path), ".") {
+		if part == "" {
+			continue
+		}
+		switch node := current.(type) {
+		case map[string]any:
+			next, ok := node[part]
+			if !ok {
+				return 0, fmt.Errorf("field %q not found in response", path)
+			}
+			current = next
+		case []any:
+			idx, err := strconv.Atoi(part)
+			if err != nil || idx < 0 || idx >= len(node) {
+				return 0, fmt.Errorf("field %q not found in response", path)
+			}
+			current = node[idx]
+		default:
+			return 0, fmt.Errorf("field %q not found in response", path)
+		}
+	}
+	switch v := current.(type) {
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return 0, fmt.Errorf("field %q is not a finite number", path)
+		}
+		return v, nil
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+			return 0, fmt.Errorf("field %q is not a valid number: %q", path, v)
+		}
+		return parsed, nil
+	default:
+		return 0, fmt.Errorf("field %q is not numeric", path)
+	}
+}
+
+func fetchCustomBalanceBody(channel *model.Channel, targetURL string) ([]byte, error) {
+	headers := GetAuthHeader(strings.TrimSpace(channel.Key))
+	if err := applyFetchModelsHeaderOverrides(channel, strings.TrimSpace(channel.Key), headers); err != nil {
+		return nil, sanitizeFetchModelsError(err, channel.Key)
+	}
+	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
+	if err != nil {
+		return nil, sanitizeFetchModelsError(err, channel.Key)
+	}
+	for name, values := range headers {
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
+		if strings.EqualFold(name, "Host") {
+			req.Host = headers.Get(name)
+		}
+	}
+	setting := channel.GetSetting()
+	client, err := service.GetHttpClientWithProxySettings(setting.Proxy, setting)
+	if err != nil {
+		return nil, sanitizeFetchModelsError(err, channel.Key)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, sanitizeAdvancedCustomRequestError(err, channel.Key, targetURL)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status code: %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAdvancedCustomBalanceResponseBytes+1))
+	if err != nil {
+		return nil, sanitizeAdvancedCustomRequestError(err, channel.Key, targetURL)
+	}
+	if len(body) > maxAdvancedCustomBalanceResponseBytes {
+		return nil, fmt.Errorf("balance response exceeds %d bytes", maxAdvancedCustomBalanceResponseBytes)
+	}
+	return body, nil
+}
+
+func fetchCustomBalanceQuery(channel *model.Channel, cfg *dto.ChannelBalanceQueryConfig) (channelBalanceResult, error) {
+	now := time.Now()
+	startDate := fmt.Sprintf("%s-01", now.Format("2006-01"))
+	endDate := now.Format("2006-01-02")
+
+	balanceURL := resolveBalanceQueryURL(channel, cfg.BalanceURL, startDate, endDate)
+	usageURL := resolveBalanceQueryURL(channel, cfg.UsageURL, startDate, endDate)
+	if balanceURL == "" && usageURL == "" {
+		balanceURL = resolveBalanceQueryURL(channel, "/v1/dashboard/billing/credit_grants", startDate, endDate)
+	}
+
+	var balanceBody []byte
+	var err error
+	if balanceURL != "" {
+		balanceBody, err = fetchCustomBalanceBody(channel, balanceURL)
+		if err != nil {
+			return channelBalanceResult{}, err
+		}
+	}
+
+	balanceField := strings.TrimSpace(cfg.BalanceField)
+	totalField := strings.TrimSpace(cfg.TotalField)
+	usageField := strings.TrimSpace(cfg.UsageField)
+
+	if balanceField == "" && totalField == "" && usageField == "" {
+		formatted, err := common.IndentJson(balanceBody)
+		if err != nil {
+			return channelBalanceResult{}, fmt.Errorf("invalid balance JSON response: %w", err)
+		}
+		return channelBalanceResult{RawResponse: string(formatted)}, nil
+	}
+
+	balanceDivisor := cfg.BalanceDivisor
+	if balanceDivisor <= 0 {
+		balanceDivisor = 1
+	}
+	usageDivisor := cfg.UsageDivisor
+	if usageDivisor <= 0 {
+		usageDivisor = 1
+	}
+
+	var rawAmount float64
+	if balanceField != "" {
+		source := balanceBody
+		if len(source) == 0 && usageURL != "" {
+			source, err = fetchCustomBalanceBody(channel, usageURL)
+			if err != nil {
+				return channelBalanceResult{}, err
+			}
+		}
+		val, err := extractJSONNumberByPath(source, balanceField)
+		if err != nil {
+			return channelBalanceResult{}, err
+		}
+		rawAmount = val / balanceDivisor
+	} else {
+		if totalField == "" {
+			return channelBalanceResult{}, errors.New("balance_field or total_field is required when mapping balance")
+		}
+		total, err := extractJSONNumberByPath(balanceBody, totalField)
+		if err != nil {
+			return channelBalanceResult{}, err
+		}
+		rawAmount = total / balanceDivisor
+		if usageField != "" {
+			usageBody := balanceBody
+			if usageURL != "" && usageURL != balanceURL {
+				usageBody, err = fetchCustomBalanceBody(channel, usageURL)
+				if err != nil {
+					return channelBalanceResult{}, err
+				}
+			}
+			used, err := extractJSONNumberByPath(usageBody, usageField)
+			if err != nil {
+				return channelBalanceResult{}, err
+			}
+			rawAmount -= used / usageDivisor
+		}
+	}
+
+	currency := strings.ToUpper(strings.TrimSpace(cfg.Currency))
+	if currency == "" {
+		currency = "USD"
+	}
+	amountCopy := rawAmount
+	balanceResult := jsplugin.BalanceResult{
+		Amount:   &amountCopy,
+		Currency: currency,
+	}
+	usd := rawAmount
+	if currency == "CNY" {
+		rate := operation_setting.USDExchangeRate
+		if rate <= 0 || math.IsNaN(rate) || math.IsInf(rate, 0) {
+			return channelBalanceResult{}, errors.New("USD exchange rate must be greater than zero")
+		}
+		usd = rawAmount / rate
+	}
+	channel.UpdateBalance(usd)
+	return channelBalanceResult{
+		Balance: usd,
+		Detail:  &model.ChannelBalanceDetail{BalanceResult: balanceResult},
+	}, nil
+}
+
+func querySingleBuiltinChannelBalance(channel *model.Channel) (channelBalanceResult, error) {
+	if cfg := channel.GetOtherSettings().BalanceQuery; hasBalanceQueryOverride(cfg) {
+		return fetchCustomBalanceQuery(channel, cfg)
+	}
+	if channel.Type == constant.ChannelTypeAdvancedCustom {
+		return fetchAdvancedCustomBalance(channel)
+	}
+	balance, err := updateStandardChannelBalance(channel)
+	return channelBalanceResult{Balance: balance}, err
+}
+
+func updateBuiltinMultiKeyChannelBalance(channel *model.Channel, enabledOnly bool) ([]pluginKeyBalance, channelBalanceResult, error) {
+	keys := channel.GetKeys()
+	balances := make([]pluginKeyBalance, 0, len(keys))
+	for index, key := range keys {
+		if enabledOnly {
+			if status, ok := channel.ChannelInfo.MultiKeyStatusList[index]; ok && status != common.ChannelStatusEnabled {
+				continue
+			}
+		}
+		keyChannel := *channel
+		keyChannel.Id = 0
+		keyChannel.Key = key
+		keyChannel.ChannelInfo.IsMultiKey = false
+
+		res, err := querySingleBuiltinChannelBalance(&keyChannel)
+		var balanceResult jsplugin.BalanceResult
+		if err != nil {
+			err = fmt.Errorf("%s", balanceErrorText(err, key))
+		} else if res.Detail != nil {
+			balanceResult = res.Detail.BalanceResult
+		} else {
+			amount := res.Balance
+			balanceResult = jsplugin.BalanceResult{Amount: &amount, Currency: "USD"}
+		}
+		balances = append(balances, pluginKeyBalance{index: index, key: key, result: balanceResult, err: err})
+	}
+	if len(balances) == 0 {
+		return nil, channelBalanceResult{}, nil
+	}
+
+	var failure error
+	succeeded := false
+	records := make(map[int]model.ChannelBalanceDetail, len(balances))
+	for _, balance := range balances {
+		record := model.ChannelBalanceDetail{BalanceResult: balance.result}
+		if balance.err != nil {
+			record.Error = balance.err.Error()
+			if failure == nil {
+				failure = balance.err
+			}
+		} else {
+			succeeded = true
+		}
+		records[balance.index] = record
+	}
+
+	detail, updateErr := service.UpdatePluginKeyBalances(channel, records)
+	if updateErr != nil {
+		common.SysError(common.LogText("failed to store balance detail: channel_id=%d, error=%v", channel.Id, updateErr))
+	}
+	if !succeeded {
+		return balances, channelBalanceResult{Detail: detail}, failure
+	}
+	totalBalance := channel.Balance
+	if detail != nil {
+		if usd, ok := usdBalance(detail.BalanceResult); ok {
+			totalBalance = usd
+		}
+	}
+	return balances, channelBalanceResult{Balance: totalBalance, Detail: detail}, nil
+}
+
 // updateChannelBalance queries a built-in channel type's balance and stores
 // its detail next to the USD balance the query writes.
 func updateChannelBalance(channel *model.Channel) (channelBalanceResult, error) {
-	var result channelBalanceResult
-	var err error
-	if channel.Type == constant.ChannelTypeAdvancedCustom {
-		result, err = fetchAdvancedCustomBalance(channel)
-	} else {
-		var balance float64
-		balance, err = updateStandardChannelBalance(channel)
-		result = channelBalanceResult{Balance: balance}
+	if channel.ChannelInfo.IsMultiKey {
+		_, result, err := updateBuiltinMultiKeyChannelBalance(channel, false)
+		return result, err
+	}
+	result, err := querySingleBuiltinChannelBalance(channel)
+	if result.Detail != nil {
+		// Custom balance query already populated currency-aware Detail; persist it.
+		if err == nil {
+			stored, updateErr := model.UpdateChannelBalanceDetail(channel.Id, func(*model.ChannelBalanceDetail) (*model.ChannelBalanceDetail, *float64) {
+				b := result.Balance
+				return result.Detail, &b
+			})
+			if updateErr != nil {
+				common.SysError(common.LogText("failed to store balance detail: channel_id=%d, error=%v", channel.Id, updateErr))
+			} else {
+				result.Detail = stored
+			}
+		} else {
+			result.Detail = recordBuiltinBalance(channel, result, err)
+		}
+		return result, err
 	}
 	result.Detail = recordBuiltinBalance(channel, result, err)
 	return result, err
@@ -743,10 +1049,6 @@ func UpdateChannelBalance(c *gin.Context) {
 			"balance":        balance,
 			"balance_detail": detail,
 		})
-		return
-	}
-	if channel.ChannelInfo.IsMultiKey {
-		common.ApiErrorT(c, "Multi-key channels do not support balance queries")
 		return
 	}
 	result, err := updateChannelBalance(channel)
