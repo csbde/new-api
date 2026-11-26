@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link, useSearch } from '@tanstack/react-router'
+import { ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
@@ -32,22 +33,24 @@ export function SignIn() {
 
   return (
     <AuthLayout>
-      <div className='w-full space-y-8'>
-        <div className='space-y-2'>
-          <h2 className='text-center text-2xl font-semibold tracking-tight sm:text-left'>
+      <div className='w-full space-y-6'>
+        <div className='flex flex-col items-center space-y-2 text-center'>
+          <div className='bg-primary/10 text-primary mb-1 flex h-10 w-10 items-center justify-center rounded-lg'>
+            <ShieldCheck className='h-5 w-5' />
+          </div>
+          <h2 className='text-xl font-semibold tracking-tight'>
             {t('Sign in')}
           </h2>
           {!status?.self_use_mode_enabled &&
             status?.register_enabled !== false && (
-              <p className='text-muted-foreground text-left text-sm sm:text-base'>
+              <p className='text-muted-foreground text-sm'>
                 {t("Don't have an account?")}{' '}
                 <Link
                   to='/sign-up'
-                  className='hover:text-primary font-medium underline underline-offset-4'
+                  className='text-foreground hover:text-primary font-medium underline underline-offset-4'
                 >
                   {t('Sign up')}
                 </Link>
-                .
               </p>
             )}
         </div>

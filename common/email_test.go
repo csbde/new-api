@@ -27,6 +27,7 @@ type fakeSMTPServer struct {
 	cert              tls.Certificate
 	advertiseSTARTTLS bool
 	authMechanisms    []string
+	closeOnQuit       bool
 	messages          chan string
 	authCommands      chan string
 	startTLSCommands  chan string
@@ -194,7 +195,9 @@ func (s *fakeSMTPServer) serve() {
 				return
 			}
 		case upperCommand == "QUIT":
-			_ = writeSMTPLine(rw, "221 2.0.0 Bye")
+			if !s.closeOnQuit {
+				_ = writeSMTPLine(rw, "221 2.0.0 Bye")
+			}
 			return
 		default:
 			if err := writeSMTPLine(rw, "502 5.5.1 Command not implemented"); err != nil {
@@ -560,4 +563,31 @@ func TestSendEmailExplicitStartTLSRejectsUntrustedCertificateByDefault(t *testin
 	err := SendEmail("Verification", "receiver@example.com", "<p>123456</p>")
 	require.Error(t, err)
 	require.Contains(t, fmt.Sprint(err), "certificate")
+}
+
+func TestSendEmailSucceedsWhenServerClosesOnQuitAfterAcceptingMessage(t *testing.T) {
+	server := newFakeSMTPServerWithSTARTTLSAdvertisement(t, false)
+	server.closeOnQuit = true
+	defer server.close()
+	withSMTPSettings(t)
+
+	SMTPServer = server.host
+	SMTPPort = server.port
+	SMTPSSLEnabled = false
+	SMTPStartTLSEnabled = false
+	SMTPInsecureSkipVerify = false
+	SMTPForceAuthLogin = false
+	SMTPAccount = "sender@example.com"
+	SMTPFrom = "sender@example.com"
+	SMTPToken = "secret"
+	SystemName = "API Gateway"
+
+	err := SendEmail("Verification", "receiver@example.com", "<p>123456</p>")
+	require.NoError(t, err)
+	select {
+	case msg := <-server.messages:
+		require.Contains(t, msg, "<p>123456</p>")
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for SMTP message")
+	}
 }

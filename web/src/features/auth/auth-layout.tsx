@@ -19,6 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
+import { LanguageSwitcher } from '@/components/language-switcher'
+import { ThemeSwitch } from '@/components/theme-switch'
+import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSystemConfig } from '@/hooks/use-system-config'
 
@@ -29,35 +32,63 @@ type AuthLayoutProps = {
 export function AuthLayout({ children }: AuthLayoutProps) {
   const { t } = useTranslation()
   const { systemName, logo, loading } = useSystemConfig()
+  const currentYear = new Date().getFullYear()
 
   return (
-    <div className='relative grid h-svh max-w-none'>
-      <Link
-        to='/'
-        className='absolute top-4 left-4 z-10 flex items-center gap-2 transition-opacity hover:opacity-80 sm:top-8 sm:left-8'
-      >
-        <div className='relative h-8 w-8'>
-          {loading ? (
-            <Skeleton className='absolute inset-0 rounded-full' />
-          ) : (
-            <img
-              src={logo}
-              alt={t('Logo')}
-              className='h-8 w-8 rounded-full object-cover'
-            />
-          )}
+    <div className='bg-muted/30 dark:bg-background relative flex min-h-svh flex-col'>
+      <div
+        aria-hidden='true'
+        className='pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] bg-[size:4rem_4rem] opacity-[0.04]'
+      />
+      <div
+        aria-hidden='true'
+        className='pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_80%_40%_at_50%_-10%,hsl(var(--primary)/0.06),transparent)]'
+      />
+
+      <header className='border-border/50 bg-background/80 sticky top-0 z-10 border-b backdrop-blur-sm'>
+        <div className='mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6'>
+          <Link
+            to='/'
+            className='flex items-center gap-2.5 transition-opacity hover:opacity-80'
+          >
+            <div className='relative h-8 w-8 shrink-0'>
+              {loading ? (
+                <Skeleton className='absolute inset-0 rounded-lg' />
+              ) : (
+                <img
+                  src={logo}
+                  alt={t('Logo')}
+                  className='h-8 w-8 rounded-lg object-cover'
+                />
+              )}
+            </div>
+            {loading ? (
+              <Skeleton className='h-5 w-28' />
+            ) : (
+              <span className='text-base font-semibold tracking-tight'>
+                {systemName}
+              </span>
+            )}
+          </Link>
+
+          <div className='flex items-center gap-1'>
+            <LanguageSwitcher />
+            <ThemeSwitch />
+          </div>
         </div>
-        {loading ? (
-          <Skeleton className='h-6 w-24' />
-        ) : (
-          <h1 className='text-xl font-medium'>{systemName}</h1>
-        )}
-      </Link>
-      <div className='container flex items-center pt-16 sm:pt-0'>
-        <div className='mx-auto flex w-full flex-col justify-center space-y-2 px-4 py-8 sm:w-[480px] sm:p-8'>
-          {children}
-        </div>
-      </div>
+      </header>
+
+      <main className='flex flex-1 items-center justify-center px-4 py-8 sm:py-12'>
+        <Card className='border-border/80 bg-card/95 w-full max-w-[440px] rounded-xl shadow-sm backdrop-blur-sm'>
+          <CardContent className='p-6 sm:p-8'>{children}</CardContent>
+        </Card>
+      </main>
+
+      <footer className='py-5 text-center'>
+        <p className='text-muted-foreground/60 text-xs'>
+          &copy; {currentYear} {systemName}. {t('footer.defaultCopyright')}
+        </p>
+      </footer>
     </div>
   )
 }

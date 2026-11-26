@@ -233,11 +233,12 @@ func SendEmailWithConfig(cfg EmailConfig, subject string, receiver string, conte
 	if err != nil {
 		return err
 	}
-	err = client.Quit()
-	if err != nil {
-		SysError(LogText("failed to send email to %s: %v", receiver, err))
+	if err = client.Quit(); err != nil {
+		// Some SMTP servers close the connection immediately after accepting DATA (250 OK)
+		// without replying to QUIT; the message has already been accepted.
+		SysLog(LogText("SMTP QUIT failed after message accepted for %s: %v", receiver, err))
 	}
-	return err
+	return nil
 }
 
 func SendEmail(subject string, receiver string, content string) error {
