@@ -140,3 +140,76 @@ func TestTaskDurationBounds(t *testing.T) {
 		})
 	}
 }
+
+func TestGetFullRequestURL(t *testing.T) {
+	tests := []struct {
+		name        string
+		baseURL     string
+		requestURL  string
+		channelType int
+		want        string
+	}{
+		{
+			name:        "OpenAI with /v1",
+			baseURL:     "https://api.openai.com/v1",
+			requestURL:  "/v1/chat/completions",
+			channelType: constant.ChannelTypeOpenAI,
+			want:        "https://api.openai.com/v1/chat/completions",
+		},
+		{
+			name:        "OpenAI with /v3",
+			baseURL:     "https://kkkk.com/v3",
+			requestURL:  "/v1/chat/completions",
+			channelType: constant.ChannelTypeOpenAI,
+			want:        "https://kkkk.com/v3/chat/completions",
+		},
+		{
+			name:        "OpenAI with /api/v3 and trailing slash",
+			baseURL:     "https://ark.cn-beijing.volces.com/api/v3/",
+			requestURL:  "/v1/responses",
+			channelType: constant.ChannelTypeOpenAI,
+			want:        "https://ark.cn-beijing.volces.com/api/v3/responses",
+		},
+		{
+			name:        "OpenAI websocket with /v1",
+			baseURL:     "wss://api.openai.com/v1",
+			requestURL:  "/v1/realtime?model=gpt-4o-realtime-preview",
+			channelType: constant.ChannelTypeOpenAI,
+			want:        "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview",
+		},
+		{
+			name:        "OpenAI legacy base URL without version suffix",
+			baseURL:     "https://kkkk.com",
+			requestURL:  "/v1/chat/completions",
+			channelType: constant.ChannelTypeOpenAI,
+			want:        "https://kkkk.com/v1/chat/completions",
+		},
+		{
+			name:        "OpenAI subpath without version suffix",
+			baseURL:     "https://proxy.example.com/openai",
+			requestURL:  "/v1/models",
+			channelType: constant.ChannelTypeOpenAI,
+			want:        "https://proxy.example.com/openai/v1/models",
+		},
+		{
+			name:        "OpenAI Cloudflare AI Gateway",
+			baseURL:     "https://gateway.ai.cloudflare.com/v1/acct/gw/openai",
+			requestURL:  "/v1/chat/completions",
+			channelType: constant.ChannelTypeOpenAI,
+			want:        "https://gateway.ai.cloudflare.com/v1/acct/gw/openai/chat/completions",
+		},
+		{
+			name:        "Non-OpenAI channel keeps /v1",
+			baseURL:     "https://api.siliconflow.cn",
+			requestURL:  "/v1/chat/completions",
+			channelType: constant.ChannelTypeSiliconFlow,
+			want:        "https://api.siliconflow.cn/v1/chat/completions",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, GetFullRequestURL(tt.baseURL, tt.requestURL, tt.channelType))
+		})
+	}
+}

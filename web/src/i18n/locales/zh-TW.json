@@ -1853,6 +1853,7 @@
     "Custom (replaces built-in {{version}})": "自訂（取代內建 {{version}}）",
     "Custom (seconds)": "自訂(秒)",
     "Custom Amount": "自訂金額",
+    "Custom API base URL, including the version path (e.g., https://api.openai.com/v1 or https://example.com/v3). Leave empty to use the official OpenAI address.": "自訂 API 基礎 URL，需包含版本路徑（例如 https://api.openai.com/v1 或 https://example.com/v3）。留空則使用官方 OpenAI 位址。",
     "Custom API base URL. For official channels, New API has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.": "自訂 API 基礎 URL。對於官方渠道，New API 具有內置地址。僅針對第三方代理站點或特殊端點填寫此項。請勿添加 /v1 或尾部斜線。",
     "Custom API base URL. For official channels, the system has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.": "自訂 API 基礎 URL。對於官方渠道，系統具有內建地址。僅針對第三方代理站點或特殊端點填寫此項。請勿新增 /v1 或尾隨斜線。",
     "Custom API base URL. Leave empty to use provider default.": "自訂 API 基礎 URL。留空以使用供應商預設值。",

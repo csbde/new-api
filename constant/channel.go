@@ -69,7 +69,7 @@ const (
 // 非空值会通过 /api/channel/default_base_urls 下发到前端，作为渠道表单的 API 地址占位提示。
 var ChannelBaseURLs = []string{
 	"",                                    // 0
-	"https://api.openai.com",              // 1
+	"https://api.openai.com/v1",           // 1
 	"https://oa.api2d.net",                // 2
 	"",                                    // 3
 	"http://localhost:11434",              // 4

@@ -1853,6 +1853,7 @@
     "Custom (replaces built-in {{version}})": "Пользовательский (заменяет встроенный {{version}})",
     "Custom (seconds)": "Пользовательский (секунды)",
     "Custom Amount": "Пользовательская сумма",
+    "Custom API base URL, including the version path (e.g., https://api.openai.com/v1 or https://example.com/v3). Leave empty to use the official OpenAI address.": "Пользовательский базовый URL API, включая путь версии (например, https://api.openai.com/v1 или https://example.com/v3). Оставьте пустым, чтобы использовать официальный адрес OpenAI.",
     "Custom API base URL. For official channels, New API has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.": "Пользовательский базовый URL API. Для официальных каналов New API имеет встроенные адреса. Заполняйте это поле только для сторонних прокси-сайтов или специальных конечных точек. Не добавляйте /v1 или завершающий слэш.",
     "Custom API base URL. For official channels, the system has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.": "Пользовательский базовый URL API. Для официальных каналов система имеет встроенные адреса. Заполняйте только для сторонних прокси-сайтов или специальных эндпоинтов. Не добавляйте /v1 или завершающий слэш.",
     "Custom API base URL. Leave empty to use provider default.": "Пользовательский базовый URL API. Оставьте пустым для использования значения по умолчанию провайдера.",

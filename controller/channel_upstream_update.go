@@ -448,7 +448,7 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 			url = fmt.Sprintf("%s/v1/models", baseURL)
 		}
 	default:
-		url = fmt.Sprintf("%s/v1/models", baseURL)
+		url = relaycommon.GetFullRequestURL(baseURL, "/v1/models", channel.Type)
 	}
 
 	key, _, apiErr := channel.GetNextEnabledKey()

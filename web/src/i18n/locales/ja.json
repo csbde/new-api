@@ -1853,6 +1853,7 @@
     "Custom (replaces built-in {{version}})": "カスタム（組み込み {{version}} を置き換え）",
     "Custom (seconds)": "カスタム（秒）",
     "Custom Amount": "カスタム金額",
+    "Custom API base URL, including the version path (e.g., https://api.openai.com/v1 or https://example.com/v3). Leave empty to use the official OpenAI address.": "バージョンパスを含むカスタム API ベース URL（例: https://api.openai.com/v1 または https://example.com/v3）。空のままにすると公式 OpenAI アドレスが使用されます。",
     "Custom API base URL. For official channels, New API has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.": "カスタムAPIベースURL。公式チャネルの場合、New APIには組み込みのアドレスがあります。これは、サードパーティのプロキシサイトまたは特別なエンドポイントに対してのみ入力してください。/v1 や末尾のスラッシュを追加しないでください。",
     "Custom API base URL. For official channels, the system has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.": "カスタムAPIベースURL。公式チャネルの場合、システムに組み込みアドレスがあります。サードパーティのプロキシサイトまたは特別なエンドポイントの場合のみ入力してください。/v1や末尾のスラッシュは追加しないでください。",
     "Custom API base URL. Leave empty to use provider default.": "カスタム API ベース URL。プロバイダのデフォルトを使用する場合は空にしてください。",

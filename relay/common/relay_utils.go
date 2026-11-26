@@ -24,17 +24,51 @@ type HasImage interface {
 }
 
 func GetFullRequestURL(baseURL string, requestURL string, channelType int) string {
-	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
+	trimmedBase := strings.TrimRight(baseURL, "/")
+	fullRequestURL := fmt.Sprintf("%s%s", trimmedBase, requestURL)
 
-	if strings.HasPrefix(baseURL, "https://gateway.ai.cloudflare.com") {
+	if strings.HasPrefix(trimmedBase, "https://gateway.ai.cloudflare.com") {
 		switch channelType {
 		case constant.ChannelTypeOpenAI:
-			fullRequestURL = fmt.Sprintf("%s%s", baseURL, strings.TrimPrefix(requestURL, "/v1"))
+			fullRequestURL = fmt.Sprintf("%s%s", trimmedBase, strings.TrimPrefix(requestURL, "/v1"))
 		case constant.ChannelTypeAzure:
-			fullRequestURL = fmt.Sprintf("%s%s", baseURL, strings.TrimPrefix(requestURL, "/openai/deployments"))
+			fullRequestURL = fmt.Sprintf("%s%s", trimmedBase, strings.TrimPrefix(requestURL, "/openai/deployments"))
 		}
+		return fullRequestURL
+	}
+
+	if channelType == constant.ChannelTypeOpenAI && hasOpenAIVersionSuffix(trimmedBase) {
+		return fmt.Sprintf("%s%s", trimmedBase, strings.TrimPrefix(requestURL, "/v1"))
 	}
 	return fullRequestURL
+}
+
+// hasOpenAIVersionSuffix reports whether baseURL already ends with a version path
+// segment (such as /v1 or /v3) so callers do not append a duplicate /v1 prefix.
+func hasOpenAIVersionSuffix(baseURL string) bool {
+	trimmed := strings.TrimRight(baseURL, "/")
+	if trimmed == "" {
+		return false
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return false
+	}
+	path := strings.TrimRight(parsed.Path, "/")
+	if path == "" {
+		return false
+	}
+	idx := strings.LastIndex(path, "/")
+	lastSegment := path[idx+1:]
+	if len(lastSegment) < 2 || lastSegment[0] != 'v' {
+		return false
+	}
+	for _, ch := range lastSegment[1:] {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func SanitizeURLForLog(rawURL string) string {

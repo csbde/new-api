@@ -44,7 +44,7 @@ func TestGetChannelDefaultBaseURLsUsesBuiltInDefaults(t *testing.T) {
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.True(t, response.Success)
 	assert.Equal(t, "https://deepseek.server.example", response.Data[constant.ChannelTypeDeepSeek])
-	assert.Equal(t, "https://api.openai.com", response.Data[constant.ChannelTypeOpenAI])
+	assert.Equal(t, "https://api.openai.com/v1", response.Data[constant.ChannelTypeOpenAI])
 	assert.NotContains(t, response.Data, constant.ChannelTypeAzure)
 	assert.NotContains(t, response.Data, constant.ChannelTypeNewAPI)
 	assert.NotContains(t, response.Data, constant.ChannelTypeTaskPlugin)

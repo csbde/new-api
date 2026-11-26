@@ -1222,9 +1222,15 @@ export function ChannelMutateDrawer({
     }
   }, [form, isEditing, multiKeyMode, supportsBatchAddMode])
 
-  // Validate base_url - warn if it ends with /v1
+  // Validate base_url - warn if it ends with /v1 (except OpenAI type 1, which supports /v1 and /v3 etc.)
   useEffect(() => {
-    if (!currentBaseUrl || !currentBaseUrl.endsWith('/v1')) return
+    if (
+      currentType === 1 ||
+      !currentBaseUrl ||
+      !currentBaseUrl.endsWith('/v1')
+    ) {
+      return
+    }
 
     // Show warning toast
     const timer = setTimeout(() => {
@@ -1238,7 +1244,7 @@ export function ChannelMutateDrawer({
 
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentBaseUrl])
+  }, [currentBaseUrl, currentType])
 
   // Handle key deduplication
   const handleDeduplicateKeys = () => {
@@ -4419,9 +4425,13 @@ export function ChannelMutateDrawer({
                     </FormControl>
                     {currentType !== CHANNEL_TYPE_TASK_PLUGIN && (
                       <FormDescription>
-                        {t(
-                          'Custom API base URL. For official channels, the system has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.'
-                        )}
+                        {currentType === 1
+                          ? t(
+                              'Custom API base URL, including the version path (e.g., https://api.openai.com/v1 or https://example.com/v3). Leave empty to use the official OpenAI address.'
+                            )
+                          : t(
+                              'Custom API base URL. For official channels, the system has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.'
+                            )}
                       </FormDescription>
                     )}
                     {currentType === CHANNEL_TYPE_TASK_PLUGIN &&
